@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Q&A with WebLLM</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #f0f0f0;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 800px;
+        }
+        h1 {
+            text-align: center;
+            color: #444;
+        }
+        #controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        #pdfFile {
+            flex-grow: 1;
+        }
+        #question {
+            flex-grow: 2;
+            padding: 0.5rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        #submit {
+            padding: 0.5rem 1rem;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #submit:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        #output {
+            margin-top: 1rem;
+            padding: 1rem;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            min-height: 100px;
+            white-space: pre-wrap;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 2s linear infinite;
+            display: none; /* Hidden by default */
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+    <script type="module">
+        import * as webllm from 'https://esm.run/@mlc-ai/web-llm';
+
+        async function init() {
+            const fileInput = document.getElementById('pdfFile');
+            const outputDiv = document.getElementById('output');
+            const questionInput = document.getElementById('question');
+            const submitBtn = document.getElementById('submit');
+            const loader = document.getElementById('loader');
+            let pdfText = '';
+
+            // Initialize WebLLM
+            outputDiv.textContent = 'Initializing WebLLM engine...';
+            const engine = await webllm.CreateMLCEngine('Llama-3.1-8B-Instruct-q4f32_1-MLC', {
+                initProgressCallback: (progress) => {
+                    outputDiv.textContent = `Initializing WebLLM... ${progress.text}`;
+                }
+            });
+            outputDiv.textContent = 'WebLLM engine initialized. Please load a PDF.';
+
+
+            fileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                pdfText = '';
+                outputDiv.textContent = '';
+                loader.style.display = 'block';
+                questionInput.disabled = true;
+                submitBtn.disabled = true;
+
+
+                // Extract text from PDF using PDF.js
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    const pdfData = new Uint8Array(event.target.result);
+                    const pdfjsLib = await new Promise((resolve) => {
+                        const script = document.createElement('script');
+                        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js';
+                        script.onload = () => resolve(window.pdfjsLib);
+                        document.head.appendChild(script);
+                    });
+
+                    const pdf = await pdfjsLib.getDocument(pdfData).promise;
+
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const content = await page.getTextContent();
+                        pdfText += content.items.map(item => item.str).join(' ');
+                    }
+
+                    loader.style.display = 'none';
+                    outputDiv.textContent = 'PDF loaded! Ask questions.';
+                    questionInput.disabled = false;
+                    submitBtn.disabled = false;
+                };
+                reader.readAsArrayBuffer(file);
+            });
+
+            submitBtn.addEventListener('click', async () => {
+                const question = questionInput.value;
+                if (!question || !pdfText) return;
+
+                outputDiv.textContent = '';
+                loader.style.display = 'block';
+                questionInput.disabled = true;
+                submitBtn.disabled = true;
+
+
+                const messages = [
+                    { role: 'system', content: 'You are an AI assistant that answers questions based on the provided PDF content.' },
+                    { role: 'user', content: `PDF Content: ${pdfText.substring(0, 4000)}\nQuestion: ${question}` }
+                ];
+
+                const reply = await engine.chat.completions.create({ messages, stream: true, stream_options: { include_usage: true } });
+
+                let full_response = "";
+                for await (const chunk of reply) {
+                    const delta = chunk.choices[0].delta.content;
+                    if (delta) {
+                        full_response += delta;
+                        outputDiv.textContent = full_response;
+                    }
+                }
+
+                loader.style.display = 'none';
+                questionInput.disabled = false;
+                submitBtn.disabled = false;
+            });
+        }
+
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>PDF Q&A with WebLLM</h1>
+        <div id="controls">
+            <input type="file" id="pdfFile" accept="application/pdf">
+        </div>
+        <div>
+            <input type="text" id="question" placeholder="Ask a question about the PDF...">
+            <button id="submit">Submit</button>
+        </div>
+        <div id="loader" class="loader"></div>
+        <div id="output"></div>
+    </div>
+</body>
+</html>
