@@ -23,7 +23,7 @@ No server. No API keys. No uploads. Nothing ever leaves your machine.
 
 ## ✨ What is this?
 
-A **single HTML file** you can drop on GitHub Pages that turns any PDF into a conversation. It runs a real large language model *and* a semantic search index entirely inside your browser tab using WebAssembly and WebGPU — so you can interrogate a 500-page contract, textbook, or research paper without a single byte being sent to a server.
+A **single HTML file** you can drop on GitHub Pages that turns any PDF into a conversation. It runs a real large language model *and* a semantic search index entirely inside your browser tab — the LLM on **WebGPU**, the embeddings on **WebAssembly** — so you can interrogate a 500-page contract, textbook, or research paper without a single byte being sent to a server.
 
 > Load a PDF → ask anything → get answers **with page citations**. That's it.
 
@@ -40,21 +40,24 @@ A **single HTML file** you can drop on GitHub Pages that turns any PDF into a co
         ┌──────────────┐
         │   Chunking   │   page-tagged, overlapping windows
         └──────┬───────┘
-               │  embedded on your GPU (all-MiniLM-L6-v2)
+               │  embedded on the CPU (all-MiniLM-L6-v2, WASM)
                ▼
         ┌──────────────┐        ┌─────────────────────────┐
         │ Vector Index │ ◀────▶ │  IndexedDB cache         │
         └──────┬───────┘        │  (embed once, reuse fast)│
                │                └─────────────────────────┘
-   your question embedded, top-K most similar chunks retrieved
+               │  the model reads a spread of the doc and
+               │  derives an overview + sees the file's metadata
+               ▼
+   your question embedded → top-K most similar chunks retrieved
                ▼
         ┌──────────────┐
         │  Llama-3.2   │   (WebLLM, runs on your GPU)
-        │   answers    │   grounded in retrieved chunks + page cites
-        └──────────────┘
+        │   answers    │   grounded in retrieved chunks + overview,
+        └──────────────┘   with page citations
 ```
 
-It's **Retrieval-Augmented Generation (RAG)**, fully local. The language model never sees the whole document — only the handful of chunks relevant to your question. That's the trick that lets a small in-browser model reason over a huge PDF.
+It's **Retrieval-Augmented Generation (RAG)**, fully local. The language model never sees the whole document — only the handful of chunks relevant to your question, plus a short overview it derived itself and the file's metadata. That's the trick that lets a small in-browser model reason over a huge PDF *and* still answer broad questions like "what is this?" or "what's on the agenda?".
 
 ---
 
@@ -64,11 +67,13 @@ It's **Retrieval-Augmented Generation (RAG)**, fully local. The language model n
 |---|---|
 | 🔒 **Totally private** | The LLM and the search index both run locally. Your document and questions never touch a network. |
 | 📁 **Single file** | The entire app is one `index.html`. Host it anywhere static — GitHub Pages, an S3 bucket, a USB stick. |
+| 🧭 **Knows the document** | On load, the model reads a spread of the PDF to derive an overview, and is given the filename + embedded metadata — so vague questions ("what's the June agenda about?") just work. |
 | 📑 **Cited answers** | Every response shows the page numbers it drew from — hover a chip to see the source text. |
-| 💬 **Real chat** | Multi-turn conversation with history, so follow-up questions just work. |
-| ⚡ **GPU-accelerated** | Embeddings build on WebGPU (5–10× faster than CPU), with automatic WASM fallback. |
-| 🌊 **Streaming index** | Pages extract, chunk, and embed in an overlapping pipeline with live progress — the tab never freezes. |
-| 💾 **Smart caching** | Each PDF is embedded once and stored in IndexedDB. Re-open the same file and it loads **instantly**. |
+| ✍️ **Markdown replies** | Answers render with headings, lists, bold, and code — not a wall of plain text. |
+| 💬 **Real chat** | Multi-turn conversation with history, plus suggested prompts to get you started. |
+| 🌊 **Streaming index** | Pages extract, chunk, and embed in an overlapping pipeline with live `page 312/500` progress — the tab never freezes. |
+| 💾 **Durable caching** | Each PDF's index is stored in IndexedDB and the ~2 GB model is cached with persistent storage, so re-opening a doc — or the whole app — is near-instant. |
+| 🧠 **Model transparency** | A header badge opens a panel explaining the model: who built it, how it was trained, why it matters, and links to benchmarks. |
 
 ---
 
@@ -76,9 +81,9 @@ It's **Retrieval-Augmented Generation (RAG)**, fully local. The language model n
 
 Large PDFs are where naive "stuff the text into the prompt" approaches fall apart. This one is engineered for them:
 
-- **WebGPU embeddings** — the index builds on your graphics card when available, freeing the CPU and slashing indexing time. Falls back to WASM/q8 automatically.
-- **Overlapping pipeline** — PDF parsing (in a worker thread) runs concurrently with GPU embedding, page by page, so a 500-page doc indexes smoothly with `page 312/500` progress instead of a frozen tab.
-- **Persistent cache** — documents are keyed by a content hash and stored locally. The second time you open a file, indexing is skipped entirely.
+- **Overlapping pipeline** — PDF parsing (PDF.js worker) runs concurrently with embedding, page by page, so a 500-page doc indexes smoothly with live progress instead of a frozen tab.
+- **GPU stays with the LLM** — embeddings run on the CPU/WASM so they never compete with the language model for VRAM (which otherwise crashes the shared GPU device). The embedding model is tiny, so this is plenty fast.
+- **Persistent index cache** — documents are keyed by a content hash; the index *and* the derived overview are stored locally, so the second time you open a file there's no re-indexing.
 - **RAG by design** — retrieval keeps the model's context tiny and constant regardless of document size, so quality and speed don't degrade as the PDF grows.
 
 ---
@@ -95,9 +100,9 @@ python -m http.server 8000
 # open http://localhost:8000
 ```
 
-Then click **📄 Load PDF**, wait for the status dot to turn green, and start chatting.
+Then click **📂 Load PDF**, wait for the status dot to turn green, and start chatting.
 
-> ⏳ **First load** downloads the language model (~2 GB) and caches it. Subsequent loads are fast. A **WebGPU-capable browser (Chrome/Edge)** is recommended.
+> ⏳ **First load** downloads the language model (~2 GB) and caches it durably, so you only wait once. A **WebGPU-capable browser (Chrome/Edge)** is required. The footer tells you whether the model was actually cached — if your browser won't keep it (common in Private/Incognito windows or with very low free disk), it may re-download.
 
 ---
 
@@ -105,9 +110,10 @@ Then click **📄 Load PDF**, wait for the status dot to turn green, and start c
 
 | Layer | Tech |
 |---|---|
-| In-browser LLM | [WebLLM](https://github.com/mlc-ai/web-llm) · `Llama-3.2-3B-Instruct` |
-| Embeddings | [Transformers.js](https://github.com/huggingface/transformers.js) · `all-MiniLM-L6-v2` |
+| In-browser LLM | [WebLLM](https://github.com/mlc-ai/web-llm) · `Llama-3.2-3B-Instruct` (on WebGPU) |
+| Embeddings | [Transformers.js](https://github.com/huggingface/transformers.js) · `all-MiniLM-L6-v2` (on WASM) |
 | PDF parsing | [PDF.js](https://github.com/mozilla/pdf.js) |
+| Markdown | [marked](https://github.com/markedjs/marked) |
 | Vector store + cache | Plain JS cosine search + IndexedDB |
 | Build step | **None.** It's one HTML file. |
 
@@ -117,6 +123,7 @@ Then click **📄 Load PDF**, wait for the status dot to turn green, and start c
 
 - **Scanned PDFs** (image-only, no text layer) have no extractable text — no OCR yet.
 - **WebGPU required** for the LLM. First load is heavy but cached afterwards.
+- **Durable caching** needs the browser to grant persistent storage and enough free disk; Private/Incognito windows will re-download the model each session.
 - The local-cache hash uses `crypto.subtle`, which needs a secure origin (works on `localhost` and GitHub Pages; gracefully skips caching on plain `file://`).
 
 ---
