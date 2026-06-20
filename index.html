@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="Chat with any PDF entirely in your browser — private, local, no server.">
 <title>Chat with a Doc · Private, in-browser PDF chat</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%84%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -196,6 +197,10 @@
     }
     .ex:hover { border-color: var(--brand); background: var(--surface-3); transform: translateY(-1px); }
 
+    /* ---------- suggestions bar ---------- */
+    .suggestions { display: none; flex-wrap: wrap; align-items: center; gap: 0.45rem; margin-bottom: 0.6rem; }
+    .suggestions .sug-label { font-size: 0.72rem; color: var(--faint); font-weight: 600; margin-right: 0.1rem; }
+
     /* ---------- composer ---------- */
     footer { padding: 0.6rem 1.15rem 1.1rem; max-width: 840px; width: 100%; margin: 0 auto; }
     .composer {
@@ -334,6 +339,13 @@
 </div>
 
 <footer>
+    <div class="suggestions" id="suggestions">
+        <span class="sug-label">Try asking</span>
+        <button class="ex">Summarize this document</button>
+        <button class="ex">What are the key takeaways?</button>
+        <button class="ex">List the main topics covered</button>
+        <button class="ex">Explain this like I'm five</button>
+    </div>
     <div class="composer">
         <textarea id="question" placeholder="Load a PDF, then ask anything about it…" disabled rows="1"></textarea>
         <button id="send" disabled title="Send">
@@ -392,14 +404,21 @@ import { marked } from 'https://esm.run/marked';
 
 // ---- config ----
 const LLM_MODEL = 'Llama-3.2-3B-Instruct-q4f32_1-MLC';
+// Persist LLM weights in IndexedDB (more reliable across reloads than the
+// default Cache API in practice). The same appConfig must be passed to both
+// CreateMLCEngine and hasModelInCache so cache detection matches where weights live.
+// `useIndexedDBCache` (older builds) and `cacheBackend` (newer) select IndexedDB.
+const appConfig = { ...webllm.prebuiltAppConfig, useIndexedDBCache: true, cacheBackend: 'indexeddb' };
 const EMBED_MODEL = 'Xenova/all-MiniLM-L6-v2';
 const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js';
 const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 const CHUNK_WORDS = 200;       // ~ tokens per chunk
 const CHUNK_OVERLAP = 40;      // word overlap between chunks
 const TOP_K = 5;               // chunks retrieved per question
-let   EMBED_BATCH = 16;        // raised to 64 once WebGPU is confirmed
-let   EMBED_DEVICE = 'wasm';   // 'webgpu' if available
+let   EMBED_BATCH = 16;        // embedding batch size
+let   EMBED_DEVICE = 'CPU';    // embeddings run on CPU/WASM; GPU is reserved for the LLM
+let   storagePersisted = false; // did the browser grant durable storage?
+let   bootCached = false;        // was the LLM already cached at page load?
 
 env.allowLocalModels = false;  // use HF hub via CDN
 env.useBrowserCache = true;    // persist the embedding model in Cache Storage
@@ -411,11 +430,21 @@ async function requestPersistence() {
     try {
         if (navigator.storage?.persist) {
             const granted = (await navigator.storage.persisted()) || (await navigator.storage.persist());
-            console.log('Persistent storage granted:', granted);
+            console.log('[storage] persistent storage granted:', granted);
             return granted;
         }
     } catch (e) { console.warn('Persistent storage request failed', e); }
     return false;
+}
+
+// Log how much the origin is actually storing vs its quota — reveals whether
+// the model is cached (~2 GB usage) or got evicted (usage near 0).
+async function logStorage(when) {
+    try {
+        const est = await navigator.storage?.estimate?.();
+        const persisted = await navigator.storage?.persisted?.();
+        if (est) console.log(`[storage ${when}] persisted=${persisted} · usage=${(est.usage / 1e9).toFixed(2)} GB / quota=${(est.quota / 1e9).toFixed(2)} GB`);
+    } catch { /* not supported */ }
 }
 
 // Record when the model was first cached so we can show its age.
@@ -468,6 +497,8 @@ const chatEl = $('chat'), emptyState = $('emptyState');
 const questionEl = $('question'), sendBtn = $('send');
 const dot = $('statusDot'), statusText = $('statusText');
 const barwrap = $('barwrap'), bar = $('bar'), hint = $('hint');
+const suggestionsEl = $('suggestions');
+let asked = false; // user has sent their first prompt
 
 // ---- state ----
 let engine = null;        // WebLLM
@@ -475,6 +506,10 @@ let embedder = null;      // transformers.js feature-extraction
 let chunks = [];          // [{ text, page, vec:Float32Array }]
 let history = [];         // [{ role, content }] for multi-turn
 let docName = '';
+let docProfile = null;    // { filename, title, author, subject, created, pages, words }
+let docOverview = '';     // model-derived summary + key topics
+let currentHash = null;   // hash of the loaded doc (for cache updates)
+let overviewBusy = false;
 let busy = false;
 
 function setStatus(text, kind = 'busy') {
@@ -520,30 +555,44 @@ function renderMarkdown(el, text) {
     });
 }
 
-// Build the embedder on WebGPU when available (5–10× faster, frees the CPU),
-// falling back to WASM/q8 so non-WebGPU browsers still work.
+// The LLM already claims the whole GPU. Running the embedding model on WebGPU
+// too competes for the same VRAM and can crash the shared device ("Device was
+// lost"). The embedding model is tiny, so we run it on CPU/WASM — fast enough,
+// and it leaves the GPU entirely to the language model.
 async function makeEmbedder() {
-    if ('gpu' in navigator) {
-        try {
-            const p = await pipeline('feature-extraction', EMBED_MODEL, { device: 'webgpu', dtype: 'fp32' });
-            EMBED_DEVICE = 'webgpu'; EMBED_BATCH = 64;
-            return p;
-        } catch (e) { console.warn('WebGPU embedder unavailable, using WASM', e); }
-    }
-    EMBED_DEVICE = 'wasm'; EMBED_BATCH = 16;
+    EMBED_DEVICE = 'CPU'; EMBED_BATCH = 16;
     return await pipeline('feature-extraction', EMBED_MODEL, { device: 'wasm', dtype: 'q8' });
+}
+
+// Tell the user, in plain language, whether the model actually got cached.
+function updateCacheHint() {
+    let msg, warn = false;
+    if (bootCached) {
+        msg = '✓ Model loaded from your local cache — no download needed.';
+    } else if (storagePersisted) {
+        msg = '✓ Model saved to durable local storage — future loads will be instant, with no re-download.';
+    } else {
+        warn = true;
+        msg = '⚠ The model was downloaded, but this browser will NOT keep it permanently — so it may re-download next time. This almost always means a Private/Incognito window or very low free disk space. Open the app in a normal window with free disk to cache it for good.';
+    }
+    hint.textContent = msg;
+    hint.style.display = 'block';
+    hint.style.color = warn ? 'var(--warn)' : 'var(--ok)';
 }
 
 // ---- boot: load embedder + LLM concurrently ----
 async function boot() {
-    await requestPersistence();
+    storagePersisted = await requestPersistence();
+    await logStorage('boot');
 
     setStatus('Loading retrieval model…', 'busy');
     const embedTask = makeEmbedder().then(p => { embedder = p; });
 
-    const cachedAlready = await webllm.hasModelInCache(LLM_MODEL).catch(() => false);
-    setStatus(cachedAlready ? 'Loading language model from cache…' : 'Downloading language model (~2 GB, one-time)…', 'busy');
+    bootCached = await webllm.hasModelInCache(LLM_MODEL, appConfig).catch(() => false);
+    console.log('[cache] LLM already cached:', bootCached, '| storage persisted:', storagePersisted);
+    setStatus(bootCached ? 'Loading language model from cache…' : 'Downloading language model (~2 GB, one-time)…', 'busy');
     const llmTask = webllm.CreateMLCEngine(LLM_MODEL, {
+        appConfig,
         initProgressCallback: (p) => {
             setStatus(p.text || 'Loading language model…', 'busy');
             if (typeof p.progress === 'number') showBar(p.progress * 100);
@@ -553,8 +602,11 @@ async function boot() {
     try {
         await Promise.all([embedTask, llmTask]);
         showBar(null);
+        await logStorage('after model load');
         modelCacheDays = noteModelCached();
         ready();
+        updateCacheHint();
+        if (chunks.length) ensureOverview(); // doc was loaded while the model finished
     } catch (err) {
         console.error(err);
         showBar(null);
@@ -572,7 +624,8 @@ function ready() {
     } else {
         setStatus(`Models ready — load a PDF to start${cacheNote}`, 'ready');
     }
-    hint.style.display = 'none';
+    // keep the suggested prompts up until the user asks their first question
+    if (chunks.length && !asked) suggestionsEl.style.display = 'flex';
 }
 
 // ---- PDF -> page texts ----
@@ -647,6 +700,76 @@ function restoreFromCache(rec) {
     }));
 }
 
+// ---- document profile (metadata the agent can see) ----
+function parsePdfDate(d) {
+    const m = /D:(\d{4})(\d{2})(\d{2})/.exec(d || '');
+    return m ? `${m[1]}-${m[2]}-${m[3]}` : '';
+}
+async function readProfile(pdf, file, pages, words) {
+    let info = {};
+    try { info = (await pdf.getMetadata())?.info || {}; } catch { /* no metadata */ }
+    return {
+        filename: file.name,
+        title: (info.Title || '').trim(),
+        author: (info.Author || '').trim(),
+        subject: (info.Subject || '').trim(),
+        created: parsePdfDate(info.CreationDate),
+        pages, words
+    };
+}
+
+// Serialize the current index + profile + overview for IndexedDB.
+function buildRecord(hash) {
+    const dim = chunks[0].vec.length;
+    const flat = new Float32Array(chunks.length * dim);
+    chunks.forEach((c, i) => flat.set(c.vec, i * dim));
+    return {
+        hash, name: docName, pages: docProfile?.pages || 0, dim, flat,
+        meta: chunks.map(c => ({ text: c.text, page: c.page })),
+        profile: docProfile, overview: docOverview
+    };
+}
+
+// Have the model read a spread of the document and derive a short overview.
+async function buildOverview() {
+    const n = chunks.length, k = Math.min(12, n);
+    const idxs = [...new Set(Array.from({ length: k }, (_, i) =>
+        Math.floor(i * (n - 1) / Math.max(1, k - 1))))];
+    const sample = idxs.map(i => `[p.${chunks[i].page}] ${chunks[i].text}`).join('\n\n');
+    const p = docProfile || {};
+    const head = `Filename: "${p.filename || docName}"` +
+        (p.title ? ` · Title: ${p.title}` : '') +
+        (p.author ? ` · Author: ${p.author}` : '') +
+        (p.created ? ` · Date: ${p.created}` : '') +
+        (p.pages ? ` · ${p.pages} pages` : '');
+    try {
+        const r = await engine.chat.completions.create({
+            temperature: 0.3,
+            messages: [
+                { role: 'system', content: 'You write concise, accurate document overviews. No preamble, no "Here is".' },
+                { role: 'user', content: `${head}\n\nExcerpts from across the document:\n${sample}\n\nWrite a 2–3 sentence summary of what this document is and its purpose, then list 3–6 key topics or sections as short bullet points. Base it only on the excerpts and metadata above.` }
+            ]
+        });
+        docOverview = (r.choices?.[0]?.message?.content || '').trim();
+    } catch (e) { console.warn('overview generation failed', e); }
+}
+
+// Generate the overview once the model is ready, show it as the agent's intro,
+// and fold it into the cache. Safe to call multiple times.
+async function ensureOverview() {
+    if (!engine || !chunks.length || docOverview || overviewBusy) return;
+    overviewBusy = true;
+    setStatus('Reading the document…', 'busy');
+    await buildOverview();
+    overviewBusy = false;
+    if (docOverview) {
+        const intro = addMsg('bot', '');
+        renderMarkdown(intro, docOverview);
+        if (currentHash) await idbPut(buildRecord(currentHash)); // cache the overview too
+    }
+    ready();
+}
+
 // ---- handle PDF upload ----
 $('pdfFile').addEventListener('change', async (e) => {
     const file = e.target.files[0];
@@ -654,6 +777,8 @@ $('pdfFile').addEventListener('change', async (e) => {
     if (busy) return;
     busy = true; sendBtn.disabled = true; questionEl.disabled = true;
     docName = file.name; chunks = []; history = [];
+    docProfile = null; docOverview = ''; currentHash = null;
+    asked = false; // new doc -> show its suggestions again
 
     try {
         setStatus('Reading PDF…', 'busy');
@@ -662,21 +787,26 @@ $('pdfFile').addEventListener('change', async (e) => {
         // 1) Skip all work if we've embedded this exact file before.
         let hash = null;
         try { hash = await hashFile(buf); } catch { /* no crypto.subtle (insecure origin) */ }
+        currentHash = hash;
         if (hash) {
             const cached = await idbGet(hash);
             if (cached) {
                 restoreFromCache(cached);
-                addMsg('system', `Loaded “${docName}” from cache — ${cached.pages} pages, ${chunks.length} chunks (no re-indexing needed). Ask away.`);
-                if (engine) ready(); else setStatus(`Loaded ${docName} from cache — finishing model load…`, 'busy');
+                docProfile = cached.profile || { filename: docName, pages: cached.pages };
+                docOverview = cached.overview || '';
+                addMsg('system', `Loaded “${docName}” from cache — ${cached.pages} pages, ${chunks.length} chunks (no re-indexing needed).`);
+                if (docOverview) { const intro = addMsg('bot', ''); renderMarkdown(intro, docOverview); }
+                if (engine) { ready(); ensureOverview(); } else setStatus(`Loaded ${docName} from cache — finishing model load…`, 'busy');
                 busy = false;
                 if (engine) { questionEl.disabled = false; sendBtn.disabled = false; }
                 return;
             }
         }
 
-        // 2) Stream: extract page → chunk → embed, overlapping PDF parsing with GPU work.
+        // 2) Stream: extract page → chunk → embed, overlapping PDF parsing with embedding.
         const pdf = await openPdf(buf);
         const total = pdf.numPages;
+        let words = 0;
         showBar(0);
         let buffer = [];
         const flush = async (force) => {
@@ -688,10 +818,11 @@ $('pdfFile').addEventListener('change', async (e) => {
         };
         for (let i = 1; i <= total; i++) {
             const txt = await pageText(pdf, i);
+            if (txt) words += txt.split(' ').length;
             buffer.push(...chunkText(txt, i));
             await flush(false);
             showBar((i / total) * 100);
-            setStatus(`Indexing on ${EMBED_DEVICE.toUpperCase()}… page ${i}/${total} (${chunks.length} chunks)`, 'busy');
+            setStatus(`Indexing on ${EMBED_DEVICE}… page ${i}/${total} (${chunks.length} chunks)`, 'busy');
         }
         await flush(true);
         showBar(null);
@@ -701,17 +832,12 @@ $('pdfFile').addEventListener('change', async (e) => {
             busy = false; return;
         }
 
-        // 3) Persist the index for next time.
-        if (hash) {
-            const dim = chunks[0].vec.length;
-            const flat = new Float32Array(chunks.length * dim);
-            chunks.forEach((c, i) => flat.set(c.vec, i * dim));
-            await idbPut({ hash, name: docName, pages: total, dim, flat,
-                meta: chunks.map(c => ({ text: c.text, page: c.page })) });
-        }
+        // 3) Capture metadata + persist the index for next time.
+        docProfile = await readProfile(pdf, file, total, words);
+        if (hash) await idbPut(buildRecord(hash));
 
-        addMsg('system', `Loaded “${docName}” — ${total} pages, ${chunks.length} searchable chunks (indexed on ${EMBED_DEVICE.toUpperCase()}). Ask away.`);
-        if (engine) ready();
+        addMsg('system', `Loaded “${docName}” — ${total} pages, ${chunks.length} searchable chunks (indexed on ${EMBED_DEVICE}).`);
+        if (engine) { ready(); await ensureOverview(); }
         else setStatus(`Indexed ${docName} — finishing model load…`, 'busy');
     } catch (err) {
         console.error(err);
@@ -724,18 +850,38 @@ $('pdfFile').addEventListener('change', async (e) => {
 
 // ---- ask ----
 function buildMessages(question, context) {
-    const sys = `You are a precise assistant that answers questions about a document the user has loaded. Use ONLY the excerpts provided as context. If the answer is not in the context, say you couldn't find it in the document. Cite page numbers in parentheses, e.g. (p. 4).`;
+    const p = docProfile || { filename: docName };
+    const meta = [
+        `Filename: ${p.filename || docName}`,
+        p.title && `Title: ${p.title}`,
+        p.author && `Author: ${p.author}`,
+        p.subject && `Subject: ${p.subject}`,
+        p.created && `Date: ${p.created}`,
+        p.pages && `Pages: ${p.pages}`
+    ].filter(Boolean).join('\n');
+
+    const sys = `You are a friendly, sharp assistant helping the user understand ONE specific document they have open. Talk naturally, like a knowledgeable colleague.
+
+=== THE DOCUMENT ===
+${meta}${docOverview ? `\n\nOverview you derived from reading it:\n${docOverview}` : ''}
+
+=== HOW TO RESPOND ===
+- The user is ALWAYS talking about this document. Read references like "the agenda", "this doc", "the June agenda", "the report", or the filename as meaning THIS document — never reply that you can't find a document by that name.
+- Use the excerpts below as your main evidence and cite pages like (p. 4) when you draw on them.
+- For broad questions ("what is this?", "what's on the agenda?", "when is it?") you may also rely on the metadata and overview above.
+- Infer the user's intent generously. Only say something isn't covered if it genuinely is absent from both the excerpts and the overview — and even then, point them to what the document does cover.`;
+
     const ctx = context.map(c => `[Page ${c.page}]\n${c.text}`).join('\n\n---\n\n');
     const msgs = [{ role: 'system', content: sys }];
-    // include a little prior turn history for follow-ups
     for (const h of history.slice(-4)) msgs.push(h);
-    msgs.push({ role: 'user', content: `Context excerpts from the document:\n\n${ctx}\n\n---\nQuestion: ${question}` });
+    msgs.push({ role: 'user', content: `Relevant excerpts retrieved from the document:\n\n${ctx}\n\n---\nQuestion: ${question}` });
     return msgs;
 }
 
 async function ask() {
     const q = questionEl.value.trim();
     if (!q || busy || !engine || !chunks.length) return;
+    asked = true; suggestionsEl.style.display = 'none'; // first prompt: retire the suggestions
     busy = true; sendBtn.disabled = true; questionEl.value = ''; autoGrow();
     addMsg('user', q);
 
