@@ -1,187 +1,510 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Q&A with WebLLM</title>
-    <style>
-        body {
-            font-family: sans-serif;
-            background-color: #f0f0f0;
-            color: #333;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-        }
-        .container {
-            background-color: #fff;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            width: 90%;
-            max-width: 800px;
-        }
-        h1 {
-            text-align: center;
-            color: #444;
-        }
-        #controls {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 1rem;
-        }
-        #pdfFile {
-            flex-grow: 1;
-        }
-        #question {
-            flex-grow: 2;
-            padding: 0.5rem;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-        #submit {
-            padding: 0.5rem 1rem;
-            background-color: #007bff;
-            color: #fff;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        #submit:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
-        }
-        #output {
-            margin-top: 1rem;
-            padding: 1rem;
-            border: 1px solid #eee;
-            border-radius: 4px;
-            min-height: 100px;
-            white-space: pre-wrap;
-        }
-        .loader {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 2s linear infinite;
-            display: none; /* Hidden by default */
-            margin: 0 auto;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
-    <script type="module">
-        import * as webllm from 'https://esm.run/@mlc-ai/web-llm';
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat with a Doc</title>
+<style>
+    :root {
+        --bg: #0f1115;
+        --panel: #181b22;
+        --panel-2: #1f232c;
+        --border: #2a2f3a;
+        --text: #e6e8ec;
+        --muted: #9aa3b2;
+        --accent: #4f8cff;
+        --accent-2: #2f6fe0;
+        --user: #2a3140;
+        --bot: #1f232c;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+        margin: 0;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+    }
+    header {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    header h1 { font-size: 1.05rem; margin: 0; font-weight: 600; }
+    header h1 .doc { color: var(--accent); }
+    .spacer { flex: 1; }
+    .status {
+        font-size: 0.78rem;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        max-width: 46ch;
+    }
+    .dot {
+        width: 8px; height: 8px; border-radius: 50%;
+        background: #d0a02a; flex: 0 0 auto;
+    }
+    .dot.ready { background: #3fb568; }
+    .dot.busy { background: #d0a02a; animation: pulse 1.2s ease-in-out infinite; }
+    .dot.error { background: #e05656; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-        async function init() {
-            const fileInput = document.getElementById('pdfFile');
-            const outputDiv = document.getElementById('output');
-            const questionInput = document.getElementById('question');
-            const submitBtn = document.getElementById('submit');
-            const loader = document.getElementById('loader');
-            let pdfText = '';
+    label.file-btn {
+        font-size: 0.82rem;
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        padding: 0.4rem 0.7rem;
+        border-radius: 6px;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    label.file-btn:hover { border-color: var(--accent); }
+    #pdfFile { display: none; }
 
-            // Initialize WebLLM
-            outputDiv.textContent = 'Initializing WebLLM engine...';
-            const engine = await webllm.CreateMLCEngine('Llama-3.1-8B-Instruct-q4f32_1-MLC', {
-                initProgressCallback: (progress) => {
-                    outputDiv.textContent = `Initializing WebLLM... ${progress.text}`;
-                }
-            });
-            outputDiv.textContent = 'WebLLM engine initialized. Please load a PDF.';
+    #chat {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.9rem;
+        max-width: 880px;
+        width: 100%;
+        margin: 0 auto;
+    }
+    .msg {
+        padding: 0.7rem 0.9rem;
+        border-radius: 10px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        max-width: 85%;
+    }
+    .msg.user { background: var(--user); align-self: flex-end; }
+    .msg.bot  { background: var(--bot); align-self: flex-start; border: 1px solid var(--border); }
+    .msg.system {
+        align-self: center; background: transparent; color: var(--muted);
+        font-size: 0.82rem; text-align: center; max-width: 70ch;
+    }
+    .cites {
+        margin-top: 0.55rem; padding-top: 0.5rem;
+        border-top: 1px dashed var(--border);
+        font-size: 0.74rem; color: var(--muted);
+        display: flex; flex-wrap: wrap; gap: 0.4rem;
+    }
+    .cite {
+        background: var(--panel-2); border: 1px solid var(--border);
+        border-radius: 5px; padding: 0.1rem 0.45rem; cursor: help;
+    }
+    .empty {
+        margin: auto; text-align: center; color: var(--muted); max-width: 44ch;
+    }
+    .empty h2 { color: var(--text); font-weight: 600; }
 
-
-            fileInput.addEventListener('change', async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                pdfText = '';
-                outputDiv.textContent = '';
-                loader.style.display = 'block';
-                questionInput.disabled = true;
-                submitBtn.disabled = true;
-
-
-                // Extract text from PDF using PDF.js
-                const reader = new FileReader();
-                reader.onload = async (event) => {
-                    const pdfData = new Uint8Array(event.target.result);
-                    const pdfjsLib = await new Promise((resolve) => {
-                        const script = document.createElement('script');
-                        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js';
-                        script.onload = () => resolve(window.pdfjsLib);
-                        document.head.appendChild(script);
-                    });
-
-                    const pdf = await pdfjsLib.getDocument(pdfData).promise;
-
-                    for (let i = 1; i <= pdf.numPages; i++) {
-                        const page = await pdf.getPage(i);
-                        const content = await page.getTextContent();
-                        pdfText += content.items.map(item => item.str).join(' ');
-                    }
-
-                    loader.style.display = 'none';
-                    outputDiv.textContent = 'PDF loaded! Ask questions.';
-                    questionInput.disabled = false;
-                    submitBtn.disabled = false;
-                };
-                reader.readAsArrayBuffer(file);
-            });
-
-            submitBtn.addEventListener('click', async () => {
-                const question = questionInput.value;
-                if (!question || !pdfText) return;
-
-                outputDiv.textContent = '';
-                loader.style.display = 'block';
-                questionInput.disabled = true;
-                submitBtn.disabled = true;
-
-
-                const messages = [
-                    { role: 'system', content: 'You are an AI assistant that answers questions based on the provided PDF content.' },
-                    { role: 'user', content: `PDF Content: ${pdfText.substring(0, 4000)}\nQuestion: ${question}` }
-                ];
-
-                const reply = await engine.chat.completions.create({ messages, stream: true, stream_options: { include_usage: true } });
-
-                let full_response = "";
-                for await (const chunk of reply) {
-                    const delta = chunk.choices[0].delta.content;
-                    if (delta) {
-                        full_response += delta;
-                        outputDiv.textContent = full_response;
-                    }
-                }
-
-                loader.style.display = 'none';
-                questionInput.disabled = false;
-                submitBtn.disabled = false;
-            });
-        }
-
-        window.addEventListener('DOMContentLoaded', init);
-    </script>
+    footer {
+        border-top: 1px solid var(--border);
+        padding: 0.75rem 1rem;
+        max-width: 880px; width: 100%; margin: 0 auto;
+    }
+    .inputrow { display: flex; gap: 0.6rem; align-items: flex-end; }
+    #question {
+        flex: 1; resize: none; min-height: 44px; max-height: 160px;
+        padding: 0.6rem 0.75rem; border-radius: 8px;
+        border: 1px solid var(--border); background: var(--panel);
+        color: var(--text); font: inherit; line-height: 1.4;
+    }
+    #question:focus { outline: none; border-color: var(--accent); }
+    #send {
+        padding: 0.6rem 1.1rem; height: 44px; border: none; border-radius: 8px;
+        background: var(--accent); color: #fff; font-weight: 600; cursor: pointer;
+    }
+    #send:hover { background: var(--accent-2); }
+    #send:disabled { background: #39414f; color: var(--muted); cursor: not-allowed; }
+    .hint { font-size: 0.72rem; color: var(--muted); margin-top: 0.4rem; }
+    .barwrap { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; margin-top: 0.5rem; display: none; }
+    .bar { height: 100%; width: 0%; background: var(--accent); transition: width 0.2s; }
+</style>
 </head>
 <body>
-    <div class="container">
-        <h1>PDF Q&A with WebLLM</h1>
-        <div id="controls">
-            <input type="file" id="pdfFile" accept="application/pdf">
-        </div>
-        <div>
-            <input type="text" id="question" placeholder="Ask a question about the PDF...">
-            <button id="submit">Submit</button>
-        </div>
-        <div id="loader" class="loader"></div>
-        <div id="output"></div>
+<header>
+    <h1>Chat with a <span class="doc">Doc</span></h1>
+    <label class="file-btn" for="pdfFile">📄 Load PDF</label>
+    <input type="file" id="pdfFile" accept="application/pdf">
+    <div class="spacer"></div>
+    <div class="status"><span class="dot" id="statusDot"></span><span id="statusText">Booting…</span></div>
+</header>
+
+<div id="chat">
+    <div class="empty" id="emptyState">
+        <h2>Chat with any PDF, fully in your browser</h2>
+        <p>Nothing leaves your machine — the language model and the document index both run locally via WebAssembly/WebGPU. Load a PDF to begin.</p>
     </div>
+</div>
+
+<footer>
+    <div class="inputrow">
+        <textarea id="question" placeholder="Load a PDF, then ask anything about it…" disabled rows="1"></textarea>
+        <button id="send" disabled>Send</button>
+    </div>
+    <div class="barwrap" id="barwrap"><div class="bar" id="bar"></div></div>
+    <div class="hint" id="hint">First load downloads the model (~2&nbsp;GB, cached afterwards). A WebGPU-capable browser (Chrome/Edge) is recommended. Documents are indexed once and cached locally, so re-opening the same PDF is instant.</div>
+</footer>
+
+<script type="module">
+import * as webllm from 'https://esm.run/@mlc-ai/web-llm';
+import { pipeline, env } from 'https://esm.run/@huggingface/transformers';
+
+// ---- config ----
+const LLM_MODEL = 'Llama-3.2-3B-Instruct-q4f32_1-MLC';
+const EMBED_MODEL = 'Xenova/all-MiniLM-L6-v2';
+const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js';
+const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+const CHUNK_WORDS = 200;       // ~ tokens per chunk
+const CHUNK_OVERLAP = 40;      // word overlap between chunks
+const TOP_K = 5;               // chunks retrieved per question
+let   EMBED_BATCH = 16;        // raised to 64 once WebGPU is confirmed
+let   EMBED_DEVICE = 'wasm';   // 'webgpu' if available
+
+env.allowLocalModels = false;  // use HF hub via CDN
+
+// ---- IndexedDB: cache the embedded index so re-opening a doc skips re-embedding ----
+const DB_NAME = 'cwad', STORE = 'docs', DB_VER = 1;
+function openDB() {
+    return new Promise((res, rej) => {
+        const r = indexedDB.open(DB_NAME, DB_VER);
+        r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: 'hash' });
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+    });
+}
+async function idbGet(hash) {
+    try {
+        const db = await openDB();
+        return await new Promise((res, rej) => {
+            const q = db.transaction(STORE, 'readonly').objectStore(STORE).get(hash);
+            q.onsuccess = () => res(q.result || null);
+            q.onerror = () => rej(q.error);
+        });
+    } catch (e) { console.warn('idbGet failed', e); return null; }
+}
+async function idbPut(rec) {
+    try {
+        const db = await openDB();
+        await new Promise((res, rej) => {
+            const q = db.transaction(STORE, 'readwrite').objectStore(STORE).put(rec);
+            q.onsuccess = () => res();
+            q.onerror = () => rej(q.error);
+        });
+    } catch (e) { console.warn('idbPut failed (index not cached)', e); }
+}
+async function hashFile(buf) {
+    const h = await crypto.subtle.digest('SHA-256', buf);
+    return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ---- dom ----
+const $ = id => document.getElementById(id);
+const chatEl = $('chat'), emptyState = $('emptyState');
+const questionEl = $('question'), sendBtn = $('send');
+const dot = $('statusDot'), statusText = $('statusText');
+const barwrap = $('barwrap'), bar = $('bar'), hint = $('hint');
+
+// ---- state ----
+let engine = null;        // WebLLM
+let embedder = null;      // transformers.js feature-extraction
+let chunks = [];          // [{ text, page, vec:Float32Array }]
+let history = [];         // [{ role, content }] for multi-turn
+let docName = '';
+let busy = false;
+
+function setStatus(text, kind = 'busy') {
+    statusText.textContent = text;
+    dot.className = 'dot ' + kind;
+}
+function showBar(pct) {
+    barwrap.style.display = pct == null ? 'none' : 'block';
+    if (pct != null) bar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+}
+function addMsg(role, text) {
+    emptyState?.remove();
+    const el = document.createElement('div');
+    el.className = 'msg ' + role;
+    el.textContent = text;
+    chatEl.appendChild(el);
+    chatEl.scrollTop = chatEl.scrollHeight;
+    return el;
+}
+
+// Build the embedder on WebGPU when available (5–10× faster, frees the CPU),
+// falling back to WASM/q8 so non-WebGPU browsers still work.
+async function makeEmbedder() {
+    if ('gpu' in navigator) {
+        try {
+            const p = await pipeline('feature-extraction', EMBED_MODEL, { device: 'webgpu', dtype: 'fp32' });
+            EMBED_DEVICE = 'webgpu'; EMBED_BATCH = 64;
+            return p;
+        } catch (e) { console.warn('WebGPU embedder unavailable, using WASM', e); }
+    }
+    EMBED_DEVICE = 'wasm'; EMBED_BATCH = 16;
+    return await pipeline('feature-extraction', EMBED_MODEL, { device: 'wasm', dtype: 'q8' });
+}
+
+// ---- boot: load embedder + LLM concurrently ----
+async function boot() {
+    setStatus('Loading retrieval model…', 'busy');
+    const embedTask = makeEmbedder().then(p => { embedder = p; });
+
+    setStatus('Loading language model… (first run downloads ~2 GB)', 'busy');
+    const llmTask = webllm.CreateMLCEngine(LLM_MODEL, {
+        initProgressCallback: (p) => {
+            setStatus(p.text || 'Loading language model…', 'busy');
+            if (typeof p.progress === 'number') showBar(p.progress * 100);
+        }
+    }).then(e => { engine = e; });
+
+    try {
+        await Promise.all([embedTask, llmTask]);
+        showBar(null);
+        ready();
+    } catch (err) {
+        console.error(err);
+        showBar(null);
+        setStatus('Failed to load models — see console. Need WebGPU (Chrome/Edge).', 'error');
+    }
+}
+
+function ready() {
+    if (chunks.length) {
+        setStatus(`Ready — ${docName} (${chunks.length} chunks)`, 'ready');
+        questionEl.disabled = false; sendBtn.disabled = false;
+        questionEl.placeholder = 'Ask anything about the document…';
+    } else {
+        setStatus('Models ready — load a PDF to start', 'ready');
+    }
+    hint.style.display = 'none';
+}
+
+// ---- PDF -> page texts ----
+let pdfjsLib = null;
+async function loadPdfJs() {
+    if (pdfjsLib) return pdfjsLib;
+    await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = PDFJS; s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+    });
+    pdfjsLib = window.pdfjsLib;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+    return pdfjsLib;
+}
+
+async function openPdf(arrayBuffer) {
+    const lib = await loadPdfJs();
+    return await lib.getDocument(new Uint8Array(arrayBuffer)).promise;
+}
+async function pageText(pdf, i) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const txt = content.items.map(it => it.str).join(' ').replace(/\s+/g, ' ').trim();
+    page.cleanup();
+    return txt;
+}
+
+// ---- chunking (page-tagged, overlapping word windows) ----
+function chunkText(text, page) {
+    const out = [];
+    if (!text) return out;
+    const words = text.split(' ');
+    for (let i = 0; i < words.length; i += (CHUNK_WORDS - CHUNK_OVERLAP)) {
+        const slice = words.slice(i, i + CHUNK_WORDS).join(' ');
+        if (slice.trim().length > 20) out.push({ text: slice, page });
+        if (i + CHUNK_WORDS >= words.length) break;
+    }
+    return out;
+}
+
+// ---- embedding ----
+async function embed(texts) {
+    const t = await embedder(texts, { pooling: 'mean', normalize: true });
+    // t.data is a flat Float32Array of shape [n, dim]
+    const dim = t.dims[t.dims.length - 1];
+    const n = texts.length;
+    const vecs = [];
+    for (let i = 0; i < n; i++) vecs.push(t.data.slice(i * dim, (i + 1) * dim));
+    return vecs;
+}
+
+function cosine(a, b) { // vectors are normalized -> dot product
+    let s = 0;
+    for (let i = 0; i < a.length; i++) s += a[i] * b[i];
+    return s;
+}
+
+function retrieve(qVec, k) {
+    return chunks
+        .map(c => ({ c, score: cosine(qVec, c.vec) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, k)
+        .map(x => x.c);
+}
+
+// Restore a cached index from a stored record (instant, no embedding).
+function restoreFromCache(rec) {
+    chunks = rec.meta.map((m, i) => ({
+        text: m.text, page: m.page,
+        vec: rec.flat.subarray(i * rec.dim, (i + 1) * rec.dim)
+    }));
+}
+
+// ---- handle PDF upload ----
+$('pdfFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (busy) return;
+    busy = true; sendBtn.disabled = true; questionEl.disabled = true;
+    docName = file.name; chunks = []; history = [];
+
+    try {
+        setStatus('Reading PDF…', 'busy');
+        const buf = await file.arrayBuffer();
+
+        // 1) Skip all work if we've embedded this exact file before.
+        let hash = null;
+        try { hash = await hashFile(buf); } catch { /* no crypto.subtle (insecure origin) */ }
+        if (hash) {
+            const cached = await idbGet(hash);
+            if (cached) {
+                restoreFromCache(cached);
+                addMsg('system', `Loaded “${docName}” from cache — ${cached.pages} pages, ${chunks.length} chunks (no re-indexing needed). Ask away.`);
+                if (engine) ready(); else setStatus(`Loaded ${docName} from cache — finishing model load…`, 'busy');
+                busy = false;
+                if (engine) { questionEl.disabled = false; sendBtn.disabled = false; }
+                return;
+            }
+        }
+
+        // 2) Stream: extract page → chunk → embed, overlapping PDF parsing with GPU work.
+        const pdf = await openPdf(buf);
+        const total = pdf.numPages;
+        showBar(0);
+        let buffer = [];
+        const flush = async (force) => {
+            while (buffer.length >= EMBED_BATCH || (force && buffer.length)) {
+                const batch = buffer.splice(0, EMBED_BATCH);
+                const vecs = await embed(batch.map(b => b.text));
+                batch.forEach((b, j) => chunks.push({ ...b, vec: vecs[j] }));
+            }
+        };
+        for (let i = 1; i <= total; i++) {
+            const txt = await pageText(pdf, i);
+            buffer.push(...chunkText(txt, i));
+            await flush(false);
+            showBar((i / total) * 100);
+            setStatus(`Indexing on ${EMBED_DEVICE.toUpperCase()}… page ${i}/${total} (${chunks.length} chunks)`, 'busy');
+        }
+        await flush(true);
+        showBar(null);
+
+        if (!chunks.length) {
+            setStatus('No extractable text (scanned/image PDF?).', 'error');
+            busy = false; return;
+        }
+
+        // 3) Persist the index for next time.
+        if (hash) {
+            const dim = chunks[0].vec.length;
+            const flat = new Float32Array(chunks.length * dim);
+            chunks.forEach((c, i) => flat.set(c.vec, i * dim));
+            await idbPut({ hash, name: docName, pages: total, dim, flat,
+                meta: chunks.map(c => ({ text: c.text, page: c.page })) });
+        }
+
+        addMsg('system', `Loaded “${docName}” — ${total} pages, ${chunks.length} searchable chunks (indexed on ${EMBED_DEVICE.toUpperCase()}). Ask away.`);
+        if (engine) ready();
+        else setStatus(`Indexed ${docName} — finishing model load…`, 'busy');
+    } catch (err) {
+        console.error(err);
+        setStatus('Failed to read PDF — see console.', 'error');
+    } finally {
+        busy = false;
+        if (engine && chunks.length) { questionEl.disabled = false; sendBtn.disabled = false; }
+    }
+});
+
+// ---- ask ----
+function buildMessages(question, context) {
+    const sys = `You are a precise assistant that answers questions about a document the user has loaded. Use ONLY the excerpts provided as context. If the answer is not in the context, say you couldn't find it in the document. Cite page numbers in parentheses, e.g. (p. 4).`;
+    const ctx = context.map(c => `[Page ${c.page}]\n${c.text}`).join('\n\n---\n\n');
+    const msgs = [{ role: 'system', content: sys }];
+    // include a little prior turn history for follow-ups
+    for (const h of history.slice(-4)) msgs.push(h);
+    msgs.push({ role: 'user', content: `Context excerpts from the document:\n\n${ctx}\n\n---\nQuestion: ${question}` });
+    return msgs;
+}
+
+async function ask() {
+    const q = questionEl.value.trim();
+    if (!q || busy || !engine || !chunks.length) return;
+    busy = true; sendBtn.disabled = true; questionEl.value = ''; autoGrow();
+    addMsg('user', q);
+
+    const botEl = addMsg('bot', '…');
+    try {
+        const [qVec] = await embed([q]);
+        const top = retrieve(qVec, TOP_K);
+        const messages = buildMessages(q, top);
+
+        const stream = await engine.chat.completions.create({ messages, stream: true, temperature: 0.4 });
+        let full = '';
+        for await (const chunk of stream) {
+            const d = chunk.choices[0]?.delta?.content;
+            if (d) { full += d; botEl.textContent = full; chatEl.scrollTop = chatEl.scrollHeight; }
+        }
+        botEl.textContent = full || '(no response)';
+
+        // citation chips
+        const cites = document.createElement('div');
+        cites.className = 'cites';
+        const seen = new Set();
+        for (const c of top) {
+            if (seen.has(c.page)) continue; seen.add(c.page);
+            const chip = document.createElement('span');
+            chip.className = 'cite';
+            chip.textContent = 'p. ' + c.page;
+            chip.title = c.text.slice(0, 280) + (c.text.length > 280 ? '…' : '');
+            cites.appendChild(chip);
+        }
+        botEl.appendChild(cites);
+
+        history.push({ role: 'user', content: q });
+        history.push({ role: 'assistant', content: full });
+    } catch (err) {
+        console.error(err);
+        botEl.textContent = 'Error generating a response — see console.';
+    } finally {
+        busy = false; sendBtn.disabled = false; questionEl.focus();
+    }
+}
+
+// ---- input UX ----
+function autoGrow() {
+    questionEl.style.height = 'auto';
+    questionEl.style.height = Math.min(questionEl.scrollHeight, 160) + 'px';
+}
+questionEl.addEventListener('input', autoGrow);
+questionEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); }
+});
+sendBtn.addEventListener('click', ask);
+
+boot();
+</script>
 </body>
 </html>
