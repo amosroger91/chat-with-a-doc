@@ -187,6 +187,7 @@
     .feature .fi { font-size: 1.1rem; }
     .feature .ft { font-weight: 600; font-size: 0.82rem; margin: 0.4rem 0 0.15rem; }
     .feature .fd { font-size: 0.72rem; color: var(--muted); line-height: 1.45; }
+    .fineprint { font-size: 0.74rem; color: var(--warn); margin-top: 1.4rem; line-height: 1.5; max-width: 50ch; margin-left: auto; margin-right: auto; }
     .examples-label { font-size: 0.72rem; color: var(--faint); margin-bottom: 0.5rem; }
     .examples { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; }
     .ex {
@@ -232,18 +233,37 @@
     .bar { height: 100%; width: 0%; background: var(--grad); border-radius: 999px; transition: width .25s ease; }
     .hint { font-size: 0.7rem; color: var(--faint); margin: 0.55rem 0.3rem 0; text-align: center; line-height: 1.5; }
 
-    /* ---------- model badge ---------- */
-    .model-badge {
+    /* ---------- model control ---------- */
+    .model-ctrl {
         display: inline-flex; align-items: center; gap: 0.4rem;
-        font-size: 0.74rem; font-weight: 600; color: var(--text);
-        font-family: inherit; cursor: pointer;
+        font-size: 0.74rem; color: var(--text);
         background: var(--surface); border: 1px solid var(--border);
-        padding: 0.3rem 0.6rem; border-radius: 999px;
+        padding: 0.25rem 0.45rem 0.25rem 0.6rem; border-radius: 999px;
         transition: border-color .12s, background .12s;
     }
-    .model-badge:hover { border-color: var(--brand); background: var(--surface-2); }
-    .model-badge .mb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--grad); }
-    .model-badge .mb-i { color: var(--faint); font-size: 0.8rem; }
+    .model-ctrl:hover { border-color: var(--brand); }
+    .model-ctrl .mb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--grad); }
+    #modelSelect {
+        font: inherit; font-size: 0.74rem; font-weight: 600; color: var(--text);
+        background: transparent; border: none; cursor: pointer; padding: 0.1rem 0.1rem;
+        max-width: 9.5rem;
+    }
+    #modelSelect:focus { outline: none; }
+    #modelSelect option { background: var(--surface-2); color: var(--text); }
+    #modelSelect:disabled { color: var(--faint); cursor: wait; }
+    .mb-load {
+        font: inherit; font-size: 0.72rem; font-weight: 600; color: #fff;
+        background: var(--grad); border: none; border-radius: 999px;
+        padding: 0.22rem 0.6rem; cursor: pointer; white-space: nowrap;
+    }
+    .mb-load:hover:not(:disabled) { filter: brightness(1.08); }
+    .mb-load:disabled { background: var(--surface-3); color: var(--faint); cursor: default; }
+    .mb-info {
+        border: none; background: var(--surface-2); color: var(--muted);
+        width: 19px; height: 19px; border-radius: 50%; cursor: pointer;
+        font-size: 0.72rem; line-height: 1; display: grid; place-items: center;
+    }
+    .mb-info:hover { color: var(--text); background: var(--surface-3); }
 
     /* ---------- modal ---------- */
     .modal-overlay {
@@ -309,9 +329,12 @@
         </div>
     </div>
     <span class="pill-local"><span class="lock">🔒</span> Local &amp; private</span>
-    <button class="model-badge" id="modelBadge" title="About this model">
-        <span class="mb-dot"></span>🧠 Llama&nbsp;3.2&nbsp;3B <span class="mb-i">ⓘ</span>
-    </button>
+    <div class="model-ctrl" title="Choose the in-browser model">
+        <span class="mb-dot"></span>🧠
+        <select id="modelSelect"></select>
+        <button id="loadModelBtn" class="mb-load">Load</button>
+        <button id="modelBadge" class="mb-info" title="About this model">ⓘ</button>
+    </div>
     <div class="spacer"></div>
     <div class="status"><span class="dot" id="statusDot"></span><span id="statusText">Booting…</span></div>
     <button class="file-btn" id="loadBtn"><span>📂</span> Load PDF</button>
@@ -321,20 +344,21 @@
 <div id="chat">
     <div class="empty" id="emptyState">
         <div class="hero-icon">💬</div>
-        <h2>Chat with any PDF, <span class="grad">fully in your browser</span></h2>
-        <p>Nothing ever leaves your machine — the language model and the document index both run locally via WebAssembly &amp; WebGPU. Load a PDF and start a conversation.</p>
+        <h2>Chat <span class="grad">fully in your browser</span></h2>
+        <p>A real language model runs locally in this tab — nothing leaves your machine. Just start chatting, or load a PDF (📂 above) to talk about a specific document.</p>
         <div class="features">
-            <div class="feature"><div class="fi">🔒</div><div class="ft">100% private</div><div class="fd">No uploads, no server, no API keys. Your document stays with you.</div></div>
-            <div class="feature"><div class="fi">📑</div><div class="ft">Cited answers</div><div class="fd">Every reply points back to the exact pages it drew from.</div></div>
-            <div class="feature"><div class="fi">⚡</div><div class="ft">GPU-accelerated</div><div class="fd">Indexed on WebGPU and cached locally, so big PDFs stay fast.</div></div>
+            <div class="feature"><div class="fi">🔒</div><div class="ft">100% private</div><div class="fd">No uploads, no server, no API keys. Everything stays with you.</div></div>
+            <div class="feature"><div class="fi">📑</div><div class="ft">Cited answers</div><div class="fd">With a PDF loaded, every reply points back to the exact pages.</div></div>
+            <div class="feature"><div class="fi">⚡</div><div class="ft">Runs locally</div><div class="fd">The model runs on your GPU and is cached, so it's fast and offline-capable.</div></div>
         </div>
-        <div class="examples-label">Once a PDF is loaded, try asking…</div>
+        <div class="examples-label">Try asking…</div>
         <div class="examples">
-            <button class="ex">Summarize this document</button>
-            <button class="ex">What are the key takeaways?</button>
-            <button class="ex">List the main topics covered</button>
-            <button class="ex">Explain this like I'm five</button>
+            <button class="ex">What can you help me with?</button>
+            <button class="ex">What web browser am I using?</button>
+            <button class="ex">What time is it for me?</button>
+            <button class="ex">Tell me a fun fact</button>
         </div>
+        <p class="fineprint">⚠️ One document at a time, and a short memory — this is a small model running in your browser, so it sees only the most relevant excerpts plus the last few messages.</p>
     </div>
 </div>
 
@@ -363,37 +387,25 @@
         <div class="modal-head">
             <div class="modal-logo">🧠</div>
             <div>
-                <div class="modal-title" id="modalTitle">Llama&nbsp;3.2&nbsp;3B Instruct</div>
-                <div class="modal-sub">running locally via WebLLM · <code>q4f32_1</code> quantization</div>
+                <div class="modal-title" id="modalTitle">—</div>
+                <div class="modal-sub" id="modalSub">—</div>
             </div>
         </div>
 
-        <div class="spec-grid">
-            <div class="spec"><div class="sk">Built by</div><div class="sv">Meta AI — Llama (GenAI) team</div></div>
-            <div class="spec"><div class="sk">Released</div><div class="sv">Sept 2024 · Llama 3.2 collection</div></div>
-            <div class="spec"><div class="sk">Parameters</div><div class="sv">3.2 billion</div></div>
-            <div class="spec"><div class="sk">Context window</div><div class="sv">128K tokens</div></div>
-            <div class="spec"><div class="sk">Architecture</div><div class="sv">Decoder transformer w/ Grouped-Query Attention</div></div>
-            <div class="spec"><div class="sk">Data cutoff</div><div class="sv">December 2023</div></div>
+        <div class="spec-grid" id="modalSpecs"></div>
+
+        <div class="modal-section">
+            <h4>About this model</h4>
+            <p id="modalDetail">—</p>
         </div>
 
         <div class="modal-section">
-            <h4>How it was trained</h4>
-            <p>Pretrained on up to <strong>9 trillion tokens</strong> from publicly available data. The small 1B/3B models were created by <strong>pruning</strong> larger Llama models and then recovering quality through <strong>knowledge distillation</strong> — the logits of the much larger Llama&nbsp;3.1 8B and 70B models were used as token-level teaching targets. The chat model was then aligned with several rounds of supervised fine-tuning (SFT), rejection sampling, and Direct Preference Optimization (DPO).</p>
+            <h4>Why it runs here</h4>
+            <p>This model runs <strong>entirely in your browser</strong> on your GPU via WebLLM — no server, no API keys, full privacy. Open model weights are exactly what make a private, local app like “Chat with a Doc” possible. Switch models anytime from the header dropdown; each one is downloaded and cached once.</p>
         </div>
 
-        <div class="modal-section">
-            <h4>Why this model matters</h4>
-            <p>Llama&nbsp;3.2 3B was purpose-built for <strong>on-device and edge AI</strong> — small enough to run in a browser tab or a phone, yet capable enough for real summarization, rewriting, and Q&amp;A. Distillation lets it punch well above its size class. Because the weights are <strong>openly available</strong>, apps like this one can run a genuine LLM entirely on your machine with <strong>no server and full privacy</strong> — which is the whole reason "Chat with a Doc" can exist.</p>
-        </div>
-
-        <div class="modal-links">
-            <a href="https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct" target="_blank" rel="noopener">📊 Model card &amp; benchmarks</a>
-            <a href="https://ai.meta.com/blog/llama-3-2-connect-2024-vision-edge-mobile-devices/" target="_blank" rel="noopener">📰 Meta's announcement</a>
-            <a href="https://github.com/meta-llama/llama-models/blob/main/models/llama3_2/MODEL_CARD.md" target="_blank" rel="noopener">📄 Official model card</a>
-            <a href="https://huggingface.co/mlc-ai/Llama-3.2-3B-Instruct-q4f32_1-MLC" target="_blank" rel="noopener">⚙️ Quantized weights (MLC)</a>
-        </div>
-        <div class="modal-foot">Benchmarks (MMLU, IFEval, etc.) are listed on the model card. Embeddings use <code>all-MiniLM-L6-v2</code> · PDF parsing by PDF.js.</div>
+        <div class="modal-links" id="modalLinks"></div>
+        <div class="modal-foot">Embeddings use <code>all-MiniLM-L6-v2</code> · PDF parsing by PDF.js · LLM runtime by <a href="https://github.com/mlc-ai/web-llm" target="_blank" rel="noopener">WebLLM</a>.</div>
     </div>
 </div>
 
@@ -403,13 +415,41 @@ import { pipeline, env } from 'https://esm.run/@huggingface/transformers';
 import { marked } from 'https://esm.run/marked';
 
 // ---- config ----
-const LLM_MODEL = 'Llama-3.2-3B-Instruct-q4f32_1-MLC';
 // Persist LLM weights in IndexedDB (more reliable across reloads than the
 // default Cache API in practice). The same appConfig must be passed to both
 // CreateMLCEngine and hasModelInCache so cache detection matches where weights live.
 // `useIndexedDBCache` (older builds) and `cacheBackend` (newer) select IndexedDB.
 const appConfig = { ...webllm.prebuiltAppConfig, useIndexedDBCache: true, cacheBackend: 'indexeddb' };
+
+// Curated set of in-browser models the user can choose from. Filtered to those
+// actually present in this WebLLM build so we never offer a missing model.
+const MODELS = [
+    { id: 'Llama-3.2-3B-Instruct-q4f32_1-MLC', name: 'Llama 3.2 3B', size: '~1.8 GB', maker: 'Meta AI', card: 'https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct',
+      detail: `Built by Meta AI's Llama team (Sept 2024). The small Llama 3.2 models were created by pruning larger Llama models and recovering quality via knowledge distillation — using the logits of Llama 3.1 8B and 70B as teaching targets — then aligned with SFT, rejection sampling, and DPO. Purpose-built for on-device/edge AI: small enough for a browser tab, capable enough for real summarization and Q&A.` },
+    { id: 'Llama-3.2-1B-Instruct-q4f32_1-MLC', name: 'Llama 3.2 1B', size: '~0.9 GB', maker: 'Meta AI', card: 'https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct',
+      detail: `Meta AI's smallest Llama 3.2 model. Same distillation-from-larger-Llamas recipe as the 3B, shrunk further. The fastest to download and load here — great when storage or GPU is limited; lighter on nuance than the 3B.` },
+    { id: 'Qwen2.5-1.5B-Instruct-q4f32_1-MLC', name: 'Qwen2.5 1.5B', size: '~1.2 GB', maker: 'Alibaba (Qwen)', card: 'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct',
+      detail: `Built by Alibaba's Qwen team. Strong multilingual and reasoning ability for its size, trained on a large-scale multilingual corpus.` },
+    { id: 'Qwen2.5-3B-Instruct-q4f32_1-MLC', name: 'Qwen2.5 3B', size: '~1.9 GB', maker: 'Alibaba (Qwen)', card: 'https://huggingface.co/Qwen/Qwen2.5-3B-Instruct',
+      detail: `Alibaba's 3B Qwen2.5 — a capable all-rounder with solid reasoning and strong multilingual support.` },
+    { id: 'gemma-2-2b-it-q4f32_1-MLC', name: 'Gemma 2 2B', size: '~1.6 GB', maker: 'Google DeepMind', card: 'https://huggingface.co/google/gemma-2-2b-it',
+      detail: `Built by Google DeepMind from the same research lineage as Gemini. Efficient and notably capable for a 2B model.` },
+    { id: 'Phi-3.5-mini-instruct-q4f16_1-MLC', name: 'Phi-3.5 mini', size: '~2.2 GB', maker: 'Microsoft', card: 'https://huggingface.co/microsoft/Phi-3.5-mini-instruct',
+      detail: `Built by Microsoft, trained heavily on high-quality "textbook-like" and synthetic data — it punches above its weight on reasoning. Uses f16 weights, so it needs a GPU with shader-f16 support.` },
+    { id: 'Llama-3.1-8B-Instruct-q4f32_1-MLC', name: 'Llama 3.1 8B', size: '~5.0 GB', maker: 'Meta AI', card: 'https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct',
+      detail: `Meta AI's larger 8B model — the highest quality option here. Best answers, but a heavy ~5 GB download and it needs a strong GPU with plenty of VRAM.` }
+];
+const AVAILABLE = MODELS.filter(m => appConfig.model_list?.some(x => x.model_id === m.id));
+const modelById = id => MODELS.find(m => m.id === id) || { id, name: id, maker: '', size: '', detail: '', card: '' };
+
+const DEFAULT_MODEL = 'Llama-3.2-3B-Instruct-q4f32_1-MLC';
+let LLM_MODEL = localStorage.getItem('cwad:model') || DEFAULT_MODEL;
+if (!AVAILABLE.some(m => m.id === LLM_MODEL)) LLM_MODEL = AVAILABLE[0]?.id || DEFAULT_MODEL;
+
 const EMBED_MODEL = 'Xenova/all-MiniLM-L6-v2';
+
+// Shown when a document loads — sets expectations about the model's limits.
+const LIMITS_NOTE = 'I focus on one document at a time (loading another replaces it), and my memory is short — I only see the most relevant excerpts plus our last few messages.';
 const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js';
 const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 const CHUNK_WORDS = 200;       // ~ tokens per chunk
@@ -498,6 +538,7 @@ const questionEl = $('question'), sendBtn = $('send');
 const dot = $('statusDot'), statusText = $('statusText');
 const barwrap = $('barwrap'), bar = $('bar'), hint = $('hint');
 const suggestionsEl = $('suggestions');
+const modelSelect = $('modelSelect');
 let asked = false; // user has sent their first prompt
 
 // ---- state ----
@@ -580,52 +621,97 @@ function updateCacheHint() {
     hint.style.color = warn ? 'var(--warn)' : 'var(--ok)';
 }
 
-// ---- boot: load embedder + LLM concurrently ----
-async function boot() {
-    storagePersisted = await requestPersistence();
-    await logStorage('boot');
+function modelProgress(p) {
+    setStatus(p.text || 'Loading model…', 'busy');
+    if (typeof p.progress === 'number') showBar(p.progress * 100);
+}
 
-    setStatus('Loading retrieval model…', 'busy');
-    const embedTask = makeEmbedder().then(p => { embedder = p; });
+// Lazy-load the embedding model — only needed once a PDF is indexed or queried.
+let embedderPromise = null;
+function ensureEmbedder() {
+    if (embedder) return Promise.resolve(embedder);
+    if (!embedderPromise) embedderPromise = makeEmbedder().then(p => (embedder = p));
+    return embedderPromise;
+}
 
-    bootCached = await webllm.hasModelInCache(LLM_MODEL, appConfig).catch(() => false);
+// The LLM is loaded on demand (NOT on page load): when the user clicks "Load",
+// starts typing, or sends. loadedModel tracks what the engine currently holds.
+let loadedModel = null;
+let enginePromise = null;
+
+// Core loader: create the engine, or reload it to a different model.
+async function loadModel(id) {
+    const m = modelById(id);
+    LLM_MODEL = id; localStorage.setItem('cwad:model', id);
+    busy = true; updateModelControls();
+    bootCached = await webllm.hasModelInCache(id, appConfig).catch(() => false);
     console.log('[cache] LLM already cached:', bootCached, '| storage persisted:', storagePersisted);
-    setStatus(bootCached ? 'Loading language model from cache…' : 'Downloading language model (~2 GB, one-time)…', 'busy');
-    const llmTask = webllm.CreateMLCEngine(LLM_MODEL, {
-        appConfig,
-        initProgressCallback: (p) => {
-            setStatus(p.text || 'Loading language model…', 'busy');
-            if (typeof p.progress === 'number') showBar(p.progress * 100);
-        }
-    }).then(e => { engine = e; });
-
+    setStatus(bootCached ? `Loading ${m.name} from cache…` : `Downloading ${m.name} (${m.size}, one-time)…`, 'busy');
+    showBar(0);
     try {
-        await Promise.all([embedTask, llmTask]);
+        if (!engine) {
+            engine = await webllm.CreateMLCEngine(id, { appConfig, initProgressCallback: modelProgress });
+            engine.setInitProgressCallback(modelProgress);
+        } else {
+            await engine.reload(id);
+        }
+        loadedModel = id;
         showBar(null);
         await logStorage('after model load');
         modelCacheDays = noteModelCached();
-        ready();
-        updateCacheHint();
-        if (chunks.length) ensureOverview(); // doc was loaded while the model finished
+        busy = false;
+        ready(); updateCacheHint(); updateModelControls();
+        if (chunks.length) ensureOverview();
     } catch (err) {
         console.error(err);
-        showBar(null);
-        setStatus('Failed to load models — see console. Need WebGPU (Chrome/Edge).', 'error');
+        showBar(null); busy = false; updateModelControls();
+        setStatus('Failed to load the model — see console. Need WebGPU (Chrome/Edge).', 'error');
     }
+    return engine;
+}
+
+// Serialize loads so concurrent triggers (typing + send + button) don't collide.
+function requestModel(id) {
+    if (engine && loadedModel === id && !enginePromise) return Promise.resolve(engine);
+    if (enginePromise) return enginePromise;
+    enginePromise = loadModel(id).finally(() => { enginePromise = null; });
+    return enginePromise;
+}
+const ensureEngine = () => requestModel(LLM_MODEL);
+
+// Enable/disable the Load button: disabled while busy, or once the selected
+// model is already the loaded one. Re-enables when a different model is picked.
+function updateModelControls() {
+    const sel = modelSelect.value;
+    modelSelect.disabled = busy;
+    const isLoaded = !!engine && loadedModel === sel;
+    loadModelBtn.disabled = busy || isLoaded;
+    loadModelBtn.textContent = isLoaded ? 'Loaded ✓' : (busy && enginePromise ? 'Loading…' : 'Load');
+}
+
+// ---- boot: light setup only. The model loads on first interaction. ----
+async function boot() {
+    storagePersisted = await requestPersistence();
+    await logStorage('boot');
+    populateModelSelect();
+    updateModelControls();
+    questionEl.disabled = false; sendBtn.disabled = false; // let them type to trigger the load
+    questionEl.placeholder = 'Type a message to begin (loads the model on your first message)…';
+    setStatus('Pick a model and click Load, or just start typing', 'ready');
 }
 
 function ready() {
     const cacheNote = modelCacheDays == null ? ''
         : modelCacheDays > 0 ? ` · model cached ${modelCacheDays}d ago` : ' · model cached';
+    questionEl.disabled = false; sendBtn.disabled = false; // chat works with or without a doc
     if (chunks.length) {
         setStatus(`Ready — ${docName} (${chunks.length} chunks)${cacheNote}`, 'ready');
-        questionEl.disabled = false; sendBtn.disabled = false;
         questionEl.placeholder = 'Ask anything about the document…';
+        if (!asked) suggestionsEl.style.display = 'flex'; // keep suggestions until first prompt
     } else {
-        setStatus(`Models ready — load a PDF to start${cacheNote}`, 'ready');
+        setStatus(`Ready — ask me anything, or load a PDF${cacheNote}`, 'ready');
+        questionEl.placeholder = 'Ask me anything… (or 📂 load a PDF to chat about it)';
     }
-    // keep the suggested prompts up until the user asks their first question
-    if (chunks.length && !asked) suggestionsEl.style.display = 'flex';
 }
 
 // ---- PDF -> page texts ----
@@ -794,11 +880,11 @@ $('pdfFile').addEventListener('change', async (e) => {
                 restoreFromCache(cached);
                 docProfile = cached.profile || { filename: docName, pages: cached.pages };
                 docOverview = cached.overview || '';
-                addMsg('system', `Loaded “${docName}” from cache — ${cached.pages} pages, ${chunks.length} chunks (no re-indexing needed).`);
+                addMsg('system', `Loaded “${docName}” from cache — ${cached.pages} pages, ${chunks.length} chunks. ${LIMITS_NOTE}`);
                 if (docOverview) { const intro = addMsg('bot', ''); renderMarkdown(intro, docOverview); }
-                if (engine) { ready(); ensureOverview(); } else setStatus(`Loaded ${docName} from cache — finishing model load…`, 'busy');
+                if (engine) { ready(); ensureOverview(); } else setStatus(`Loaded ${docName} — type a message to load the model & chat`, 'ready');
                 busy = false;
-                if (engine) { questionEl.disabled = false; sendBtn.disabled = false; }
+                questionEl.disabled = false; sendBtn.disabled = false;
                 return;
             }
         }
@@ -807,6 +893,8 @@ $('pdfFile').addEventListener('change', async (e) => {
         const pdf = await openPdf(buf);
         const total = pdf.numPages;
         let words = 0;
+        setStatus('Loading the text indexer…', 'busy');
+        await ensureEmbedder();
         showBar(0);
         let buffer = [];
         const flush = async (force) => {
@@ -836,51 +924,95 @@ $('pdfFile').addEventListener('change', async (e) => {
         docProfile = await readProfile(pdf, file, total, words);
         if (hash) await idbPut(buildRecord(hash));
 
-        addMsg('system', `Loaded “${docName}” — ${total} pages, ${chunks.length} searchable chunks (indexed on ${EMBED_DEVICE}).`);
+        addMsg('system', `Loaded “${docName}” — ${total} pages, ${chunks.length} searchable chunks. ${LIMITS_NOTE}`);
         if (engine) { ready(); await ensureOverview(); }
-        else setStatus(`Indexed ${docName} — finishing model load…`, 'busy');
+        else setStatus(`Indexed ${docName} — type a message to load the model & chat`, 'ready');
     } catch (err) {
         console.error(err);
         setStatus('Failed to read PDF — see console.', 'error');
     } finally {
         busy = false;
-        if (engine && chunks.length) { questionEl.disabled = false; sendBtn.disabled = false; }
+        questionEl.disabled = false; sendBtn.disabled = false;
     }
 });
 
 // ---- ask ----
-function buildMessages(question, context) {
-    const p = docProfile || { filename: docName };
-    const meta = [
-        `Filename: ${p.filename || docName}`,
-        p.title && `Title: ${p.title}`,
-        p.author && `Author: ${p.author}`,
-        p.subject && `Subject: ${p.subject}`,
-        p.created && `Date: ${p.created}`,
-        p.pages && `Pages: ${p.pages}`
+// A snapshot of the user's browser/environment the model can answer about.
+function browserInfo() {
+    const n = navigator;
+    let tz = '', now = '';
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch {}
+    try { now = new Date().toString(); } catch {}
+    return [
+        `User agent: ${n.userAgent}`,
+        `Platform/OS: ${n.userAgentData?.platform || n.platform || 'unknown'}`,
+        `Language: ${n.language}${n.languages?.length ? ` (preferred: ${n.languages.join(', ')})` : ''}`,
+        tz && `Time zone: ${tz}`,
+        now && `Local date & time: ${now}`,
+        `Screen: ${screen.width}×${screen.height} · window ${innerWidth}×${innerHeight} · DPR ${devicePixelRatio}`,
+        `CPU cores: ${n.hardwareConcurrency ?? 'unknown'}`,
+        n.deviceMemory ? `Device memory: ~${n.deviceMemory} GB` : null,
+        `WebGPU: ${('gpu' in n) ? 'available' : 'not available'}`,
+        `Online: ${n.onLine} · Cookies enabled: ${n.cookieEnabled}`
     ].filter(Boolean).join('\n');
+}
 
-    const sys = `You are a friendly, sharp assistant helping the user understand ONE specific document they have open. Talk naturally, like a knowledgeable colleague.
+function buildMessages(question, context) {
+    const env = browserInfo();
+    const msgs = [];
+
+    if (chunks.length) {
+        // ---- document mode ----
+        const p = docProfile || { filename: docName };
+        const meta = [
+            `Filename: ${p.filename || docName}`,
+            p.title && `Title: ${p.title}`,
+            p.author && `Author: ${p.author}`,
+            p.subject && `Subject: ${p.subject}`,
+            p.created && `Date: ${p.created}`,
+            p.pages && `Pages: ${p.pages}`
+        ].filter(Boolean).join('\n');
+
+        const sys = `You are a friendly, sharp assistant helping the user understand ONE specific document they have open. Talk naturally, like a knowledgeable colleague.
 
 === THE DOCUMENT ===
 ${meta}${docOverview ? `\n\nOverview you derived from reading it:\n${docOverview}` : ''}
 
+=== THE USER'S BROWSER (answer environment questions from this) ===
+${env}
+
 === HOW TO RESPOND ===
-- The user is ALWAYS talking about this document. Read references like "the agenda", "this doc", "the June agenda", "the report", or the filename as meaning THIS document — never reply that you can't find a document by that name.
+- The user is USUALLY talking about this document. Read references like "the agenda", "this doc", "the June agenda", "the report", or the filename as meaning THIS document — never reply that you can't find a document by that name.
 - Use the excerpts below as your main evidence and cite pages like (p. 4) when you draw on them.
 - For broad questions ("what is this?", "what's on the agenda?", "when is it?") you may also rely on the metadata and overview above.
-- Infer the user's intent generously. Only say something isn't covered if it genuinely is absent from both the excerpts and the overview — and even then, point them to what the document does cover.`;
+- If the user asks about their browser, device, time, or environment, answer from the browser info above.
+- Infer intent generously. Only say something isn't covered if it's genuinely absent — and even then, point them to what the document does cover.`;
 
-    const ctx = context.map(c => `[Page ${c.page}]\n${c.text}`).join('\n\n---\n\n');
-    const msgs = [{ role: 'system', content: sys }];
-    for (const h of history.slice(-4)) msgs.push(h);
-    msgs.push({ role: 'user', content: `Relevant excerpts retrieved from the document:\n\n${ctx}\n\n---\nQuestion: ${question}` });
+        const ctx = context.map(c => `[Page ${c.page}]\n${c.text}`).join('\n\n---\n\n');
+        msgs.push({ role: 'system', content: sys });
+        for (const h of history.slice(-4)) msgs.push(h);
+        msgs.push({ role: 'user', content: `Relevant excerpts retrieved from the document:\n\n${ctx}\n\n---\nQuestion: ${question}` });
+    } else {
+        // ---- general chat mode (no document loaded) ----
+        const sys = `You are a friendly, helpful AI assistant running entirely inside the user's web browser — no server, completely private. Chat naturally about anything they ask.
+
+The user can optionally load a PDF (the "📂 Load PDF" button) to chat about a specific document, but that is not required — happily answer general questions without one.
+
+=== THE USER'S BROWSER (answer environment questions from this) ===
+${env}
+
+If the user asks about their browser, device, screen, time, or environment, answer from the info above.`;
+
+        msgs.push({ role: 'system', content: sys });
+        for (const h of history.slice(-4)) msgs.push(h);
+        msgs.push({ role: 'user', content: question });
+    }
     return msgs;
 }
 
 async function ask() {
     const q = questionEl.value.trim();
-    if (!q || busy || !engine || !chunks.length) return;
+    if (!q || busy) return; // engine + document are both loaded on demand
     asked = true; suggestionsEl.style.display = 'none'; // first prompt: retire the suggestions
     busy = true; sendBtn.disabled = true; questionEl.value = ''; autoGrow();
     addMsg('user', q);
@@ -888,8 +1020,18 @@ async function ask() {
     const botEl = addMsg('bot', '');
     botEl.classList.add('blink');
     try {
-        const [qVec] = await embed([q]);
-        const top = retrieve(qVec, TOP_K);
+        // load the model on first use (may download on the very first message)
+        if (!engine) { botEl.textContent = 'Loading the model…'; await ensureEngine(); }
+        if (!engine) { botEl.classList.remove('blink'); botEl.textContent = 'Could not load the model — see console.'; return; }
+        botEl.textContent = '';
+
+        // retrieve only if a document is loaded; otherwise it's a general chat
+        let top = [];
+        if (chunks.length) {
+            await ensureEmbedder();
+            const [qVec] = await embed([q]);
+            top = retrieve(qVec, TOP_K);
+        }
         const messages = buildMessages(q, top);
 
         const stream = await engine.chat.completions.create({ messages, stream: true, temperature: 0.4 });
@@ -901,22 +1043,24 @@ async function ask() {
         botEl.classList.remove('blink');
         renderMarkdown(botEl, full || '_(no response)_');
 
-        // citation chips
-        const cites = document.createElement('div');
-        cites.className = 'cites';
-        const label = document.createElement('span');
-        label.className = 'cites-label'; label.textContent = 'Sources';
-        cites.appendChild(label);
-        const seen = new Set();
-        for (const c of top) {
-            if (seen.has(c.page)) continue; seen.add(c.page);
-            const chip = document.createElement('span');
-            chip.className = 'cite';
-            chip.textContent = 'p. ' + c.page;
-            chip.title = c.text.slice(0, 280) + (c.text.length > 280 ? '…' : '');
-            cites.appendChild(chip);
+        // citation chips (only when grounded in a document)
+        if (top.length) {
+            const cites = document.createElement('div');
+            cites.className = 'cites';
+            const label = document.createElement('span');
+            label.className = 'cites-label'; label.textContent = 'Sources';
+            cites.appendChild(label);
+            const seen = new Set();
+            for (const c of top) {
+                if (seen.has(c.page)) continue; seen.add(c.page);
+                const chip = document.createElement('span');
+                chip.className = 'cite';
+                chip.textContent = 'p. ' + c.page;
+                chip.title = c.text.slice(0, 280) + (c.text.length > 280 ? '…' : '');
+                cites.appendChild(chip);
+            }
+            botEl.appendChild(cites);
         }
-        botEl.appendChild(cites);
 
         history.push({ role: 'user', content: q });
         history.push({ role: 'assistant', content: full });
@@ -934,7 +1078,11 @@ function autoGrow() {
     questionEl.style.height = 'auto';
     questionEl.style.height = Math.min(questionEl.scrollHeight, 160) + 'px';
 }
-questionEl.addEventListener('input', autoGrow);
+// typing starts loading the model in the background (only once there's text)
+questionEl.addEventListener('input', () => {
+    autoGrow();
+    if (questionEl.value.trim() && !engine && !enginePromise) ensureEngine();
+});
 questionEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); }
 });
@@ -943,16 +1091,48 @@ sendBtn.addEventListener('click', ask);
 // header "Load PDF" button -> hidden file input
 $('loadBtn').addEventListener('click', () => $('pdfFile').click());
 
-// example prompt chips: fill the box (and send if ready)
+// example prompt chips: fill the box and send (loads the model on demand)
 document.querySelectorAll('.ex').forEach(b => b.addEventListener('click', () => {
+    if (busy) return;
     questionEl.value = b.textContent.trim();
     autoGrow(); questionEl.focus();
-    if (!sendBtn.disabled) ask();
+    ask();
 }));
 
-// model-info modal
+// ---- model picker ----
+const loadModelBtn = $('loadModelBtn');
+function populateModelSelect() {
+    modelSelect.innerHTML = AVAILABLE.map(m =>
+        `<option value="${m.id}">${m.name} · ${m.size}</option>`).join('');
+    modelSelect.value = LLM_MODEL;
+}
+modelSelect.addEventListener('change', () => {
+    LLM_MODEL = modelSelect.value;
+    localStorage.setItem('cwad:model', LLM_MODEL);
+    updateModelControls(); // re-enables Load for the newly picked model
+});
+loadModelBtn.addEventListener('click', () => { if (!busy) requestModel(modelSelect.value); });
+
+// ---- model-info modal (content reflects the selected model) ----
 const modal = $('modelModal');
-$('modelBadge').addEventListener('click', () => modal.classList.add('open'));
+function populateModal() {
+    const m = modelById(modelSelect.value);
+    $('modalTitle').textContent = m.name;
+    $('modalSub').textContent = `${m.maker || 'Open model'} · runs locally in your browser via WebLLM`;
+    const specs = [
+        ['Built by', m.maker || '—'],
+        ['Download size', m.size || '—'],
+        ['Runs on', 'Your GPU (WebGPU)'],
+        ['Your data', '100% local, never sent'],
+    ];
+    $('modalSpecs').innerHTML = specs.map(([k, v]) =>
+        `<div class="spec"><div class="sk">${k}</div><div class="sv">${v}</div></div>`).join('');
+    $('modalDetail').textContent = m.detail || '';
+    $('modalLinks').innerHTML =
+        (m.card ? `<a href="${m.card}" target="_blank" rel="noopener">📊 Model card &amp; benchmarks</a>` : '') +
+        `<a href="https://github.com/mlc-ai/web-llm" target="_blank" rel="noopener">⚙️ WebLLM runtime</a>`;
+}
+$('modelBadge').addEventListener('click', () => { populateModal(); modal.classList.add('open'); });
 $('modalClose').addEventListener('click', () => modal.classList.remove('open'));
 modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') modal.classList.remove('open'); });
