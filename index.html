@@ -3,163 +3,392 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chat with a Doc</title>
+<meta name="description" content="Chat with any PDF entirely in your browser — private, local, no server.">
+<title>Chat with a Doc · Private, in-browser PDF chat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
     :root {
-        --bg: #0f1115;
-        --panel: #181b22;
-        --panel-2: #1f232c;
-        --border: #2a2f3a;
-        --text: #e6e8ec;
-        --muted: #9aa3b2;
-        --accent: #4f8cff;
-        --accent-2: #2f6fe0;
-        --user: #2a3140;
-        --bot: #1f232c;
+        --bg: #0a0b10;
+        --surface: #14161d;
+        --surface-2: #1b1e27;
+        --surface-3: #21252f;
+        --border: #272b36;
+        --border-strong: #333949;
+        --text: #eceef3;
+        --muted: #9298a6;
+        --faint: #686e7d;
+        --brand-1: #6d9bff;
+        --brand-2: #9b7bff;
+        --brand: #7a8dff;
+        --grad: linear-gradient(135deg, #6d9bff 0%, #9b7bff 100%);
+        --ok: #46c98a;
+        --warn: #e0b341;
+        --err: #ec6a6a;
+        --radius: 16px;
+        --shadow: 0 8px 30px rgba(0,0,0,.35);
+        --shadow-lg: 0 20px 60px rgba(0,0,0,.45);
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
     body {
         margin: 0;
-        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-        background: var(--bg);
+        font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
         color: var(--text);
+        background:
+            radial-gradient(1100px 600px at 12% -8%, rgba(109,155,255,.14), transparent 60%),
+            radial-gradient(1000px 700px at 95% 0%, rgba(155,123,255,.12), transparent 55%),
+            var(--bg);
         display: flex;
         flex-direction: column;
         height: 100vh;
+        font-size: 15px;
+        -webkit-font-smoothing: antialiased;
     }
+    ::selection { background: rgba(122,141,255,.32); }
+
+    /* ---------- header ---------- */
     header {
-        padding: 0.75rem 1rem;
+        position: sticky; top: 0; z-index: 10;
+        display: flex; align-items: center; gap: 0.85rem;
+        padding: 0.7rem 1.15rem;
+        background: rgba(10,11,16,.72);
+        backdrop-filter: saturate(160%) blur(14px);
+        -webkit-backdrop-filter: saturate(160%) blur(14px);
         border-bottom: 1px solid var(--border);
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        flex-wrap: wrap;
     }
-    header h1 { font-size: 1.05rem; margin: 0; font-weight: 600; }
-    header h1 .doc { color: var(--accent); }
+    .brand { display: flex; align-items: center; gap: 0.6rem; }
+    .logo {
+        width: 34px; height: 34px; border-radius: 10px;
+        background: var(--grad);
+        display: grid; place-items: center;
+        font-size: 18px; box-shadow: 0 6px 18px rgba(109,123,255,.45);
+    }
+    .brand-text { line-height: 1.05; }
+    .brand-text .name { font-weight: 700; font-size: 0.98rem; letter-spacing: -.01em; }
+    .brand-text .tag { font-size: 0.68rem; color: var(--muted); font-weight: 500; }
+    .pill-local {
+        display: inline-flex; align-items: center; gap: 0.35rem;
+        font-size: 0.68rem; font-weight: 600; color: #a9e7c8;
+        background: rgba(70,201,138,.1); border: 1px solid rgba(70,201,138,.28);
+        padding: 0.25rem 0.55rem; border-radius: 999px;
+    }
+    .pill-local .lock { font-size: 0.72rem; }
     .spacer { flex: 1; }
     .status {
-        font-size: 0.78rem;
-        color: var(--muted);
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
-        max-width: 46ch;
+        display: inline-flex; align-items: center; gap: 0.45rem;
+        font-size: 0.74rem; color: var(--muted);
+        background: var(--surface); border: 1px solid var(--border);
+        padding: 0.34rem 0.6rem; border-radius: 999px; max-width: 44ch;
     }
-    .dot {
-        width: 8px; height: 8px; border-radius: 50%;
-        background: #d0a02a; flex: 0 0 auto;
-    }
-    .dot.ready { background: #3fb568; }
-    .dot.busy { background: #d0a02a; animation: pulse 1.2s ease-in-out infinite; }
-    .dot.error { background: #e05656; }
-    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .status span#statusText { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex: 0 0 auto; }
+    .dot.ready { background: var(--ok); box-shadow: 0 0 0 3px rgba(70,201,138,.16); }
+    .dot.busy  { background: var(--warn); animation: pulse 1.2s ease-in-out infinite; }
+    .dot.error { background: var(--err); box-shadow: 0 0 0 3px rgba(236,106,106,.16); }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
 
-    label.file-btn {
-        font-size: 0.82rem;
-        background: var(--panel-2);
-        border: 1px solid var(--border);
-        padding: 0.4rem 0.7rem;
-        border-radius: 6px;
-        cursor: pointer;
-        white-space: nowrap;
+    .file-btn {
+        display: inline-flex; align-items: center; gap: 0.45rem;
+        font-size: 0.82rem; font-weight: 600; color: #fff;
+        background: var(--grad); border: none;
+        padding: 0.5rem 0.85rem; border-radius: 10px;
+        cursor: pointer; white-space: nowrap;
+        box-shadow: 0 6px 18px rgba(109,123,255,.35);
+        transition: transform .12s ease, box-shadow .12s ease, opacity .12s;
     }
-    label.file-btn:hover { border-color: var(--accent); }
+    .file-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(109,123,255,.5); }
+    .file-btn:active { transform: translateY(0); }
     #pdfFile { display: none; }
 
+    /* ---------- chat ---------- */
     #chat {
-        flex: 1;
-        overflow-y: auto;
-        padding: 1.25rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.9rem;
-        max-width: 880px;
-        width: 100%;
-        margin: 0 auto;
+        flex: 1; overflow-y: auto;
+        padding: 1.6rem 1.15rem 1rem;
+        display: flex; flex-direction: column; gap: 1.1rem;
+        max-width: 840px; width: 100%; margin: 0 auto;
     }
-    .msg {
-        padding: 0.7rem 0.9rem;
-        border-radius: 10px;
-        line-height: 1.5;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-        max-width: 85%;
-    }
-    .msg.user { background: var(--user); align-self: flex-end; }
-    .msg.bot  { background: var(--bot); align-self: flex-start; border: 1px solid var(--border); }
-    .msg.system {
-        align-self: center; background: transparent; color: var(--muted);
-        font-size: 0.82rem; text-align: center; max-width: 70ch;
-    }
-    .cites {
-        margin-top: 0.55rem; padding-top: 0.5rem;
-        border-top: 1px dashed var(--border);
-        font-size: 0.74rem; color: var(--muted);
-        display: flex; flex-wrap: wrap; gap: 0.4rem;
-    }
-    .cite {
-        background: var(--panel-2); border: 1px solid var(--border);
-        border-radius: 5px; padding: 0.1rem 0.45rem; cursor: help;
-    }
-    .empty {
-        margin: auto; text-align: center; color: var(--muted); max-width: 44ch;
-    }
-    .empty h2 { color: var(--text); font-weight: 600; }
+    #chat::-webkit-scrollbar { width: 10px; }
+    #chat::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; }
+    #chat::-webkit-scrollbar-thumb:hover { background: var(--border-strong); background-clip: padding-box; }
 
-    footer {
+    .row { display: flex; gap: 0.7rem; align-items: flex-start; animation: rise .35s cubic-bezier(.2,.8,.2,1); }
+    .row.user { flex-direction: row-reverse; }
+    @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    .avatar {
+        width: 30px; height: 30px; border-radius: 9px; flex: 0 0 auto;
+        display: grid; place-items: center; font-size: 14px; margin-top: 2px;
+    }
+    .avatar.bot { background: var(--grad); box-shadow: 0 4px 12px rgba(109,123,255,.4); }
+    .avatar.user { background: var(--surface-3); border: 1px solid var(--border-strong); }
+    .bubble {
+        padding: 0.8rem 1rem; border-radius: 14px; line-height: 1.6;
+        max-width: 78%; word-wrap: break-word; overflow-wrap: anywhere;
+    }
+    .row.user .bubble {
+        background: var(--grad); color: #fff; border-bottom-right-radius: 5px;
+        box-shadow: 0 8px 22px rgba(109,123,255,.28);
+    }
+    .row.bot .bubble {
+        background: var(--surface); border: 1px solid var(--border);
+        border-bottom-left-radius: 5px; box-shadow: var(--shadow);
+    }
+    /* markdown inside bot bubbles */
+    .bubble p { margin: 0 0 0.6rem; } .bubble p:last-child { margin-bottom: 0; }
+    .bubble ul, .bubble ol { margin: 0.4rem 0; padding-left: 1.25rem; }
+    .bubble li { margin: 0.2rem 0; }
+    .bubble h1, .bubble h2, .bubble h3 { margin: 0.6rem 0 0.4rem; font-size: 1.02em; }
+    .bubble code { font-family: 'JetBrains Mono', monospace; font-size: 0.86em; background: var(--surface-3); padding: 0.1em 0.38em; border-radius: 5px; }
+    .bubble pre { background: var(--surface-3); padding: 0.8rem; border-radius: 10px; overflow-x: auto; border: 1px solid var(--border); }
+    .bubble pre code { background: none; padding: 0; }
+    .bubble a { color: var(--brand-1); }
+    .bubble strong { color: #fff; font-weight: 600; }
+    .blink::after { content: '▋'; color: var(--brand); animation: pulse 1s steps(2) infinite; margin-left: 1px; }
+
+    .msg-system {
+        align-self: center; text-align: center; max-width: 64ch;
+        font-size: 0.8rem; color: var(--muted);
+        background: var(--surface); border: 1px solid var(--border);
+        padding: 0.5rem 0.9rem; border-radius: 999px;
+        animation: rise .35s ease;
+    }
+
+    .cites {
+        margin-top: 0.7rem; padding-top: 0.6rem;
         border-top: 1px solid var(--border);
-        padding: 0.75rem 1rem;
-        max-width: 880px; width: 100%; margin: 0 auto;
+        display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center;
     }
-    .inputrow { display: flex; gap: 0.6rem; align-items: flex-end; }
+    .cites-label { font-size: 0.68rem; color: var(--faint); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-right: 0.15rem; }
+    .cite {
+        font-size: 0.72rem; font-weight: 500; color: var(--brand-1);
+        background: rgba(109,155,255,.1); border: 1px solid rgba(109,155,255,.28);
+        border-radius: 7px; padding: 0.15rem 0.5rem; cursor: help;
+        transition: background .12s;
+    }
+    .cite:hover { background: rgba(109,155,255,.2); }
+
+    /* ---------- empty state ---------- */
+    .empty { margin: auto; text-align: center; max-width: 600px; padding: 1rem; animation: rise .5s ease; }
+    .empty .hero-icon {
+        width: 64px; height: 64px; border-radius: 18px; margin: 0 auto 1.2rem;
+        background: var(--grad); display: grid; place-items: center; font-size: 32px;
+        box-shadow: 0 16px 40px rgba(109,123,255,.4);
+    }
+    .empty h2 { font-size: 1.6rem; font-weight: 700; margin: 0 0 0.5rem; letter-spacing: -.02em; }
+    .empty h2 .grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .empty p { color: var(--muted); margin: 0 auto 1.6rem; max-width: 46ch; line-height: 1.6; }
+    .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.7rem; margin-bottom: 1.6rem; }
+    .feature {
+        background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+        padding: 0.9rem 0.7rem; text-align: left;
+    }
+    .feature .fi { font-size: 1.1rem; }
+    .feature .ft { font-weight: 600; font-size: 0.82rem; margin: 0.4rem 0 0.15rem; }
+    .feature .fd { font-size: 0.72rem; color: var(--muted); line-height: 1.45; }
+    .examples-label { font-size: 0.72rem; color: var(--faint); margin-bottom: 0.5rem; }
+    .examples { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; }
+    .ex {
+        font-size: 0.78rem; color: var(--text);
+        background: var(--surface-2); border: 1px solid var(--border);
+        padding: 0.4rem 0.7rem; border-radius: 999px; cursor: pointer;
+        transition: border-color .12s, background .12s, transform .12s;
+    }
+    .ex:hover { border-color: var(--brand); background: var(--surface-3); transform: translateY(-1px); }
+
+    /* ---------- composer ---------- */
+    footer { padding: 0.6rem 1.15rem 1.1rem; max-width: 840px; width: 100%; margin: 0 auto; }
+    .composer {
+        display: flex; gap: 0.5rem; align-items: flex-end;
+        background: var(--surface); border: 1px solid var(--border-strong);
+        border-radius: var(--radius); padding: 0.5rem 0.5rem 0.5rem 0.9rem;
+        box-shadow: var(--shadow-lg);
+        transition: border-color .15s, box-shadow .15s;
+    }
+    .composer:focus-within { border-color: var(--brand); box-shadow: 0 0 0 4px rgba(122,141,255,.12), var(--shadow-lg); }
     #question {
-        flex: 1; resize: none; min-height: 44px; max-height: 160px;
-        padding: 0.6rem 0.75rem; border-radius: 8px;
-        border: 1px solid var(--border); background: var(--panel);
-        color: var(--text); font: inherit; line-height: 1.4;
+        flex: 1; resize: none; min-height: 28px; max-height: 180px;
+        border: none; background: transparent; color: var(--text);
+        font: inherit; line-height: 1.5; padding: 0.35rem 0;
     }
-    #question:focus { outline: none; border-color: var(--accent); }
+    #question:focus { outline: none; }
+    #question::placeholder { color: var(--faint); }
     #send {
-        padding: 0.6rem 1.1rem; height: 44px; border: none; border-radius: 8px;
-        background: var(--accent); color: #fff; font-weight: 600; cursor: pointer;
+        width: 40px; height: 40px; flex: 0 0 auto; border: none; border-radius: 11px;
+        background: var(--grad); color: #fff; cursor: pointer;
+        display: grid; place-items: center;
+        transition: transform .12s, opacity .12s, filter .12s;
     }
-    #send:hover { background: var(--accent-2); }
-    #send:disabled { background: #39414f; color: var(--muted); cursor: not-allowed; }
-    .hint { font-size: 0.72rem; color: var(--muted); margin-top: 0.4rem; }
-    .barwrap { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; margin-top: 0.5rem; display: none; }
-    .bar { height: 100%; width: 0%; background: var(--accent); transition: width 0.2s; }
+    #send:hover:not(:disabled) { transform: translateY(-1px) scale(1.03); }
+    #send:disabled { background: var(--surface-3); color: var(--faint); cursor: not-allowed; }
+    #send svg { width: 18px; height: 18px; }
+
+    .barwrap { height: 3px; background: var(--surface-3); border-radius: 999px; overflow: hidden; margin: 0.7rem 0.2rem 0; display: none; }
+    .bar { height: 100%; width: 0%; background: var(--grad); border-radius: 999px; transition: width .25s ease; }
+    .hint { font-size: 0.7rem; color: var(--faint); margin: 0.55rem 0.3rem 0; text-align: center; line-height: 1.5; }
+
+    /* ---------- model badge ---------- */
+    .model-badge {
+        display: inline-flex; align-items: center; gap: 0.4rem;
+        font-size: 0.74rem; font-weight: 600; color: var(--text);
+        font-family: inherit; cursor: pointer;
+        background: var(--surface); border: 1px solid var(--border);
+        padding: 0.3rem 0.6rem; border-radius: 999px;
+        transition: border-color .12s, background .12s;
+    }
+    .model-badge:hover { border-color: var(--brand); background: var(--surface-2); }
+    .model-badge .mb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--grad); }
+    .model-badge .mb-i { color: var(--faint); font-size: 0.8rem; }
+
+    /* ---------- modal ---------- */
+    .modal-overlay {
+        position: fixed; inset: 0; z-index: 50;
+        background: rgba(5,6,10,.66); backdrop-filter: blur(6px);
+        display: none; align-items: center; justify-content: center; padding: 1.2rem;
+    }
+    .modal-overlay.open { display: flex; animation: fade .2s ease; }
+    @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+    .modal {
+        position: relative; width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto;
+        background: var(--surface); border: 1px solid var(--border-strong);
+        border-radius: 20px; padding: 1.6rem; box-shadow: var(--shadow-lg);
+        animation: rise .28s cubic-bezier(.2,.8,.2,1);
+    }
+    .modal::-webkit-scrollbar { width: 8px; }
+    .modal::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 999px; }
+    .modal-close {
+        position: absolute; top: 1rem; right: 1rem; width: 30px; height: 30px;
+        border: 1px solid var(--border); background: var(--surface-2); color: var(--muted);
+        border-radius: 8px; cursor: pointer; font-size: 0.8rem;
+    }
+    .modal-close:hover { color: var(--text); border-color: var(--border-strong); }
+    .modal-head { display: flex; gap: 0.85rem; align-items: center; margin-bottom: 1.2rem; }
+    .modal-logo { width: 48px; height: 48px; border-radius: 13px; background: var(--grad); display: grid; place-items: center; font-size: 24px; box-shadow: 0 8px 22px rgba(109,123,255,.4); }
+    .modal-title { font-size: 1.18rem; font-weight: 700; letter-spacing: -.01em; }
+    .modal-sub { font-size: 0.78rem; color: var(--muted); margin-top: 0.15rem; }
+    .modal-sub code, .modal-foot code { font-family: 'JetBrains Mono', monospace; font-size: 0.92em; color: var(--brand-1); }
+    .spec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 1.3rem; }
+    .spec { background: var(--surface-2); border: 1px solid var(--border); border-radius: 11px; padding: 0.6rem 0.75rem; }
+    .sk { font-size: 0.66rem; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); font-weight: 600; }
+    .sv { font-size: 0.84rem; margin-top: 0.2rem; line-height: 1.35; }
+    .modal-section { margin-bottom: 1.2rem; }
+    .modal-section h4 { margin: 0 0 0.4rem; font-size: 0.82rem; text-transform: uppercase; letter-spacing: .05em; color: var(--brand-1); }
+    .modal-section p { margin: 0; font-size: 0.88rem; line-height: 1.6; color: var(--text); }
+    .modal-section strong { color: #fff; font-weight: 600; }
+    .modal-links { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 1rem; }
+    .modal-links a {
+        font-size: 0.8rem; font-weight: 500; color: var(--text); text-decoration: none;
+        background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+        padding: 0.55rem 0.7rem; transition: border-color .12s, background .12s;
+    }
+    .modal-links a:hover { border-color: var(--brand); background: var(--surface-3); }
+    .modal-foot { font-size: 0.72rem; color: var(--faint); line-height: 1.5; border-top: 1px solid var(--border); padding-top: 0.85rem; }
+
+    @media (max-width: 600px) {
+        .features { grid-template-columns: 1fr; }
+        .brand-text .tag { display: none; }
+        .status { max-width: 14ch; }
+        .bubble { max-width: 86%; }
+        .model-badge { display: none; }
+        .spec-grid, .modal-links { grid-template-columns: 1fr; }
+    }
 </style>
 </head>
 <body>
 <header>
-    <h1>Chat with a <span class="doc">Doc</span></h1>
-    <label class="file-btn" for="pdfFile">📄 Load PDF</label>
-    <input type="file" id="pdfFile" accept="application/pdf">
+    <div class="brand">
+        <div class="logo">📄</div>
+        <div class="brand-text">
+            <div class="name">Chat with a Doc</div>
+            <div class="tag">Private, in-browser PDF chat</div>
+        </div>
+    </div>
+    <span class="pill-local"><span class="lock">🔒</span> Local &amp; private</span>
+    <button class="model-badge" id="modelBadge" title="About this model">
+        <span class="mb-dot"></span>🧠 Llama&nbsp;3.2&nbsp;3B <span class="mb-i">ⓘ</span>
+    </button>
     <div class="spacer"></div>
     <div class="status"><span class="dot" id="statusDot"></span><span id="statusText">Booting…</span></div>
+    <button class="file-btn" id="loadBtn"><span>📂</span> Load PDF</button>
+    <input type="file" id="pdfFile" accept="application/pdf">
 </header>
 
 <div id="chat">
     <div class="empty" id="emptyState">
-        <h2>Chat with any PDF, fully in your browser</h2>
-        <p>Nothing leaves your machine — the language model and the document index both run locally via WebAssembly/WebGPU. Load a PDF to begin.</p>
+        <div class="hero-icon">💬</div>
+        <h2>Chat with any PDF, <span class="grad">fully in your browser</span></h2>
+        <p>Nothing ever leaves your machine — the language model and the document index both run locally via WebAssembly &amp; WebGPU. Load a PDF and start a conversation.</p>
+        <div class="features">
+            <div class="feature"><div class="fi">🔒</div><div class="ft">100% private</div><div class="fd">No uploads, no server, no API keys. Your document stays with you.</div></div>
+            <div class="feature"><div class="fi">📑</div><div class="ft">Cited answers</div><div class="fd">Every reply points back to the exact pages it drew from.</div></div>
+            <div class="feature"><div class="fi">⚡</div><div class="ft">GPU-accelerated</div><div class="fd">Indexed on WebGPU and cached locally, so big PDFs stay fast.</div></div>
+        </div>
+        <div class="examples-label">Once a PDF is loaded, try asking…</div>
+        <div class="examples">
+            <button class="ex">Summarize this document</button>
+            <button class="ex">What are the key takeaways?</button>
+            <button class="ex">List the main topics covered</button>
+            <button class="ex">Explain this like I'm five</button>
+        </div>
     </div>
 </div>
 
 <footer>
-    <div class="inputrow">
+    <div class="composer">
         <textarea id="question" placeholder="Load a PDF, then ask anything about it…" disabled rows="1"></textarea>
-        <button id="send" disabled>Send</button>
+        <button id="send" disabled title="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+        </button>
     </div>
     <div class="barwrap" id="barwrap"><div class="bar" id="bar"></div></div>
-    <div class="hint" id="hint">First load downloads the model (~2&nbsp;GB, cached afterwards). A WebGPU-capable browser (Chrome/Edge) is recommended. Documents are indexed once and cached locally, so re-opening the same PDF is instant.</div>
+    <div class="hint" id="hint">First load downloads the model (~2&nbsp;GB) and caches it durably, so you only wait once. WebGPU browser (Chrome/Edge) recommended.</div>
 </footer>
+
+<!-- ───────── model info modal ───────── -->
+<div class="modal-overlay" id="modelModal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <button class="modal-close" id="modalClose" aria-label="Close">✕</button>
+        <div class="modal-head">
+            <div class="modal-logo">🧠</div>
+            <div>
+                <div class="modal-title" id="modalTitle">Llama&nbsp;3.2&nbsp;3B Instruct</div>
+                <div class="modal-sub">running locally via WebLLM · <code>q4f32_1</code> quantization</div>
+            </div>
+        </div>
+
+        <div class="spec-grid">
+            <div class="spec"><div class="sk">Built by</div><div class="sv">Meta AI — Llama (GenAI) team</div></div>
+            <div class="spec"><div class="sk">Released</div><div class="sv">Sept 2024 · Llama 3.2 collection</div></div>
+            <div class="spec"><div class="sk">Parameters</div><div class="sv">3.2 billion</div></div>
+            <div class="spec"><div class="sk">Context window</div><div class="sv">128K tokens</div></div>
+            <div class="spec"><div class="sk">Architecture</div><div class="sv">Decoder transformer w/ Grouped-Query Attention</div></div>
+            <div class="spec"><div class="sk">Data cutoff</div><div class="sv">December 2023</div></div>
+        </div>
+
+        <div class="modal-section">
+            <h4>How it was trained</h4>
+            <p>Pretrained on up to <strong>9 trillion tokens</strong> from publicly available data. The small 1B/3B models were created by <strong>pruning</strong> larger Llama models and then recovering quality through <strong>knowledge distillation</strong> — the logits of the much larger Llama&nbsp;3.1 8B and 70B models were used as token-level teaching targets. The chat model was then aligned with several rounds of supervised fine-tuning (SFT), rejection sampling, and Direct Preference Optimization (DPO).</p>
+        </div>
+
+        <div class="modal-section">
+            <h4>Why this model matters</h4>
+            <p>Llama&nbsp;3.2 3B was purpose-built for <strong>on-device and edge AI</strong> — small enough to run in a browser tab or a phone, yet capable enough for real summarization, rewriting, and Q&amp;A. Distillation lets it punch well above its size class. Because the weights are <strong>openly available</strong>, apps like this one can run a genuine LLM entirely on your machine with <strong>no server and full privacy</strong> — which is the whole reason "Chat with a Doc" can exist.</p>
+        </div>
+
+        <div class="modal-links">
+            <a href="https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct" target="_blank" rel="noopener">📊 Model card &amp; benchmarks</a>
+            <a href="https://ai.meta.com/blog/llama-3-2-connect-2024-vision-edge-mobile-devices/" target="_blank" rel="noopener">📰 Meta's announcement</a>
+            <a href="https://github.com/meta-llama/llama-models/blob/main/models/llama3_2/MODEL_CARD.md" target="_blank" rel="noopener">📄 Official model card</a>
+            <a href="https://huggingface.co/mlc-ai/Llama-3.2-3B-Instruct-q4f32_1-MLC" target="_blank" rel="noopener">⚙️ Quantized weights (MLC)</a>
+        </div>
+        <div class="modal-foot">Benchmarks (MMLU, IFEval, etc.) are listed on the model card. Embeddings use <code>all-MiniLM-L6-v2</code> · PDF parsing by PDF.js.</div>
+    </div>
+</div>
 
 <script type="module">
 import * as webllm from 'https://esm.run/@mlc-ai/web-llm';
 import { pipeline, env } from 'https://esm.run/@huggingface/transformers';
+import { marked } from 'https://esm.run/marked';
 
 // ---- config ----
 const LLM_MODEL = 'Llama-3.2-3B-Instruct-q4f32_1-MLC';
@@ -173,6 +402,30 @@ let   EMBED_BATCH = 16;        // raised to 64 once WebGPU is confirmed
 let   EMBED_DEVICE = 'wasm';   // 'webgpu' if available
 
 env.allowLocalModels = false;  // use HF hub via CDN
+env.useBrowserCache = true;    // persist the embedding model in Cache Storage
+
+// Ask the browser to keep our ~2 GB of model weights instead of evicting them
+// under storage pressure. This makes the cache durable indefinitely (well past
+// 30 days) so the models never need to be re-downloaded.
+async function requestPersistence() {
+    try {
+        if (navigator.storage?.persist) {
+            const granted = (await navigator.storage.persisted()) || (await navigator.storage.persist());
+            console.log('Persistent storage granted:', granted);
+            return granted;
+        }
+    } catch (e) { console.warn('Persistent storage request failed', e); }
+    return false;
+}
+
+// Record when the model was first cached so we can show its age.
+let modelCacheDays = null;
+function noteModelCached() {
+    const KEY = 'cwad:model-cached-at';
+    let ts = localStorage.getItem(KEY);
+    if (!ts) { ts = String(Date.now()); localStorage.setItem(KEY, ts); }
+    return Math.floor((Date.now() - Number(ts)) / 86400000);
+}
 
 // ---- IndexedDB: cache the embedded index so re-opening a doc skips re-embedding ----
 const DB_NAME = 'cwad', STORE = 'docs', DB_VER = 1;
@@ -234,12 +487,37 @@ function showBar(pct) {
 }
 function addMsg(role, text) {
     emptyState?.remove();
-    const el = document.createElement('div');
-    el.className = 'msg ' + role;
-    el.textContent = text;
-    chatEl.appendChild(el);
+    if (role === 'system') {
+        const el = document.createElement('div');
+        el.className = 'msg-system';
+        el.textContent = text;
+        chatEl.appendChild(el);
+        chatEl.scrollTop = chatEl.scrollHeight;
+        return el;
+    }
+    const row = document.createElement('div');
+    row.className = 'row ' + role;
+    const av = document.createElement('div');
+    av.className = 'avatar ' + role;
+    av.textContent = role === 'user' ? '🧑' : '🤖';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = text;
+    row.append(av, bubble);
+    chatEl.appendChild(row);
     chatEl.scrollTop = chatEl.scrollHeight;
-    return el;
+    return bubble; // callers style/append to the bubble
+}
+
+// Render Markdown into a bubble, stripping anything executable (defense-in-depth).
+function renderMarkdown(el, text) {
+    el.innerHTML = marked.parse(text, { breaks: true });
+    el.querySelectorAll('script, style, iframe, object, embed').forEach(n => n.remove());
+    el.querySelectorAll('*').forEach(n => {
+        [...n.attributes].forEach(a => {
+            if (/^on/i.test(a.name) || /javascript:/i.test(a.value)) n.removeAttribute(a.name);
+        });
+    });
 }
 
 // Build the embedder on WebGPU when available (5–10× faster, frees the CPU),
@@ -258,10 +536,13 @@ async function makeEmbedder() {
 
 // ---- boot: load embedder + LLM concurrently ----
 async function boot() {
+    await requestPersistence();
+
     setStatus('Loading retrieval model…', 'busy');
     const embedTask = makeEmbedder().then(p => { embedder = p; });
 
-    setStatus('Loading language model… (first run downloads ~2 GB)', 'busy');
+    const cachedAlready = await webllm.hasModelInCache(LLM_MODEL).catch(() => false);
+    setStatus(cachedAlready ? 'Loading language model from cache…' : 'Downloading language model (~2 GB, one-time)…', 'busy');
     const llmTask = webllm.CreateMLCEngine(LLM_MODEL, {
         initProgressCallback: (p) => {
             setStatus(p.text || 'Loading language model…', 'busy');
@@ -272,6 +553,7 @@ async function boot() {
     try {
         await Promise.all([embedTask, llmTask]);
         showBar(null);
+        modelCacheDays = noteModelCached();
         ready();
     } catch (err) {
         console.error(err);
@@ -281,12 +563,14 @@ async function boot() {
 }
 
 function ready() {
+    const cacheNote = modelCacheDays == null ? ''
+        : modelCacheDays > 0 ? ` · model cached ${modelCacheDays}d ago` : ' · model cached';
     if (chunks.length) {
-        setStatus(`Ready — ${docName} (${chunks.length} chunks)`, 'ready');
+        setStatus(`Ready — ${docName} (${chunks.length} chunks)${cacheNote}`, 'ready');
         questionEl.disabled = false; sendBtn.disabled = false;
         questionEl.placeholder = 'Ask anything about the document…';
     } else {
-        setStatus('Models ready — load a PDF to start', 'ready');
+        setStatus(`Models ready — load a PDF to start${cacheNote}`, 'ready');
     }
     hint.style.display = 'none';
 }
@@ -455,7 +739,8 @@ async function ask() {
     busy = true; sendBtn.disabled = true; questionEl.value = ''; autoGrow();
     addMsg('user', q);
 
-    const botEl = addMsg('bot', '…');
+    const botEl = addMsg('bot', '');
+    botEl.classList.add('blink');
     try {
         const [qVec] = await embed([q]);
         const top = retrieve(qVec, TOP_K);
@@ -467,11 +752,15 @@ async function ask() {
             const d = chunk.choices[0]?.delta?.content;
             if (d) { full += d; botEl.textContent = full; chatEl.scrollTop = chatEl.scrollHeight; }
         }
-        botEl.textContent = full || '(no response)';
+        botEl.classList.remove('blink');
+        renderMarkdown(botEl, full || '_(no response)_');
 
         // citation chips
         const cites = document.createElement('div');
         cites.className = 'cites';
+        const label = document.createElement('span');
+        label.className = 'cites-label'; label.textContent = 'Sources';
+        cites.appendChild(label);
         const seen = new Set();
         for (const c of top) {
             if (seen.has(c.page)) continue; seen.add(c.page);
@@ -487,6 +776,7 @@ async function ask() {
         history.push({ role: 'assistant', content: full });
     } catch (err) {
         console.error(err);
+        botEl.classList.remove('blink');
         botEl.textContent = 'Error generating a response — see console.';
     } finally {
         busy = false; sendBtn.disabled = false; questionEl.focus();
@@ -503,6 +793,23 @@ questionEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); }
 });
 sendBtn.addEventListener('click', ask);
+
+// header "Load PDF" button -> hidden file input
+$('loadBtn').addEventListener('click', () => $('pdfFile').click());
+
+// example prompt chips: fill the box (and send if ready)
+document.querySelectorAll('.ex').forEach(b => b.addEventListener('click', () => {
+    questionEl.value = b.textContent.trim();
+    autoGrow(); questionEl.focus();
+    if (!sendBtn.disabled) ask();
+}));
+
+// model-info modal
+const modal = $('modelModal');
+$('modelBadge').addEventListener('click', () => modal.classList.add('open'));
+$('modalClose').addEventListener('click', () => modal.classList.remove('open'));
+modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') modal.classList.remove('open'); });
 
 boot();
 </script>
